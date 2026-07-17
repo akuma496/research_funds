@@ -33,6 +33,7 @@ OUT_ROOT = ROOT / "data" / "raw" / "options"
 LOG_FILE = OUT_ROOT / "collector.log"
 
 BASE = "https://data.alpaca.markets/v1beta1/options/snapshots/"
+CONTRACTS = "https://paper-api.alpaca.markets/v2/options/contracts"
 EXPIRY_HORIZON_DAYS = 45      # nearest expiries are what matter for OPEX flow
 PAGE_LIMIT = 1000
 MIN_REQUEST_INTERVAL = 0.35   # stay under Alpaca's 200 req/min free limit
@@ -115,6 +116,27 @@ def fetch_chain(sym: str, headers: dict) -> dict:
             "pages": pages, "n_contracts": len(snapshots), "snapshots": snapshots}
 
 
+def fetch_open_interest(sym: str, headers: dict) -> dict:
+    """Contract metadata (open interest, prior close) from the trading API."""
+    max_expiry = (datetime.now() + timedelta(days=EXPIRY_HORIZON_DAYS)).strftime("%Y-%m-%d")
+    params = {"underlying_symbols": sym, "limit": "10000",
+              "expiration_date_lte": max_expiry, "status": "active"}
+    contracts, pages, token = {}, 0, None
+    while True:
+        if token:
+            params["page_token"] = token
+        data = api_get(CONTRACTS + "?" + urllib.parse.urlencode(params), headers)
+        for c in data.get("option_contracts") or []:
+            contracts[c["symbol"]] = {"oi": c.get("open_interest"),
+                                      "oi_date": c.get("open_interest_date"),
+                                      "prev_close": c.get("close_price")}
+        pages += 1
+        token = data.get("next_page_token")
+        if not token or pages >= 20:
+            break
+    return contracts
+
+
 def log(msg: str):
     line = f"{datetime.now().astimezone().isoformat()} {msg}"
     print(line)
@@ -148,6 +170,11 @@ def main():
     for sym in tickers:
         try:
             chain = fetch_chain(sym, headers)
+            try:
+                chain["contracts"] = fetch_open_interest(sym, headers)
+            except Exception as e:
+                chain["contracts"] = {}
+                log(f"  WARN {sym}: open-interest fetch failed: {e}")
             if chain["n_contracts"] == 0:
                 empty += 1  # no listed options (common for micro-caps) — still record it
             else:

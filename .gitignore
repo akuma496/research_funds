@@ -1,3 +1,5 @@
 .env
 data/raw/
 __pycache__/
+data/store/bars_minute.parquet
+data/store/*
