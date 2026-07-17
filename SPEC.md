@@ -33,6 +33,11 @@ Fridays are tagged: `regular`, `monthly_opex` (3rd Friday), `quad_witching` (3rd
 | **SEC EDGAR** (free, official) | 13F quarterly institutional holdings deltas; Form 4 insider trades; 8-K event feed; 10-Q revenue for lipstick index | 13F has 45-day lag, quarterly, no timestamps |
 | **Web-search agents** (public pages only) | Sentiment & event research with citations (Yahoo Finance news, Finviz, Reuters, MarketWatch, press releases, public Seeking Alpha headlines) | No paywalled scraping; every claim cited with URL + date |
 
+**Empirical feed test results (2026-07-16, live against Alpaca free tier):**
+- Chain snapshots: ✅ full chains returned (SPY 5,458 contracts). Quotes on 100% of contracts; latest trade on ~77%; Alpaca-supplied greeks/IV only on recently-active contracts (~30%) → we compute our own Black–Scholes greeks from quotes, as planned.
+- **Historical options trades: ✅ available free** — trade-by-trade prints (price, size, exchange, condition codes). This upgrades block detection from "best effort" to real tape analysis, and likely allows *backfilling* past block-trade history (verify depth at build time).
+- Historical options quotes: ❌ 404 — not offered. At-ask classification therefore uses the **tick rule** on the trade sequence plus comparison against our four daily window snapshot quotes (the agreed best-effort method). OI/IV history still accrues only from capture start.
+
 **Key honesty notes (agreed in discussion):**
 - "Institutional buying/selling at those times" is approximated by: block prints (≥10,000 shares or ≥$200k notional) from trade tape + volume anomaly z-scores + quarterly 13F deltas. True intraday institutional attribution does not exist in public data.
 - "Block options trades filled at the ask" is **best-effort on free data**: primary = Alpaca options trades classified by quote rule (fill ≥ ask ⇒ buyer-initiated / "at ask"); fallback = volume-vs-open-interest deltas between our four daily chain snapshots.
