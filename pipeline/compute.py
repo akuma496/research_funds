@@ -256,9 +256,14 @@ def hawkes_industry(dj: pd.DataFrame, uni: pd.DataFrame) -> pd.DataFrame:
     all_days = np.sort(dj["date"].unique())
     day_index = {d: i for i, d in enumerate(np.sort(pd.unique(dj["date"])))}
     rows = []
+    n_members = uni.groupby("industry")["ticker"].nunique()
     for ind, g in dj.groupby("industry"):
-        # event = a day on which >=1 constituent jumped (de-duplicated, jittered)
-        days = np.sort(pd.unique(g["date"]))
+        # event = an industry-wide shock day: >=20% of constituents (min 2)
+        # jump on the same day. Any-single-ticker days fire near-daily in a
+        # 15-name industry and make P(cluster) degenerate at 1.0.
+        need = max(2, int(round(0.2 * n_members.get(ind, 10))))
+        per_day = g.groupby("date")["ticker"].nunique()
+        days = np.sort(per_day[per_day >= need].index.values)
         times = np.array([day_index[d] for d in days], dtype=float)
         times = times - times.min() + 0.5
         T = float(max(day_index.values())) + 1.0
