@@ -103,10 +103,10 @@ def fetch_bars(symbols, timeframe, start, end, headers) -> dict:
     return merged
 
 
-def last_fridays(n: int) -> list:
+def last_fridays(n: int, include_today: bool = False) -> list:
     d = date.today()
     d -= timedelta(days=(d.weekday() - 4) % 7)  # most recent Friday (or today)
-    if d >= date.today():                        # exclude today/future
+    if d >= date.today() and not include_today:  # exclude today/future
         d -= timedelta(days=7)
     return [d - timedelta(weeks=i) for i in range(n)]
 
@@ -122,6 +122,8 @@ def log(msg: str):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--fridays", type=int, default=52)
+    ap.add_argument("--include-today", action="store_true",
+                    help="include today's session (use after the close)")
     args = ap.parse_args()
 
     env = load_env()
@@ -133,7 +135,7 @@ def main():
     OUT_DAY.mkdir(parents=True, exist_ok=True)
 
     # --- 1. minute bars for the last N Fridays ---
-    fridays = last_fridays(args.fridays)
+    fridays = last_fridays(args.fridays, include_today=args.include_today)
     log(f"START backfill: {len(fridays)} Fridays x {len(symbols)} tickers")
     done = failed = 0
     for d in fridays:
@@ -158,7 +160,8 @@ def main():
     # --- 2. daily bars, 2 years ---
     out = OUT_DAY / "daily_bars.json.gz"
     start = (date.today() - timedelta(days=731)).isoformat()
-    end = (date.today() - timedelta(days=1)).isoformat()
+    end = (date.today() if args.include_today
+           else date.today() - timedelta(days=1)).isoformat()
     try:
         bars = fetch_bars(symbols, "1Day", f"{start}T00:00:00Z", f"{end}T23:59:00Z", headers)
         n = sum(len(v) for v in bars.values())

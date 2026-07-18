@@ -1,220 +1,220 @@
-ticker,industry
-LITE,photonics
-COHR,photonics
-IPGP,photonics
-MKSI,photonics
-FN,photonics
-LASR,photonics
-AAOI,photonics
-POET,photonics
-LPTH,photonics
-KOPN,photonics
-VIAV,photonics
-CIEN,photonics
-GLW,photonics
-OLED,photonics
-VECO,photonics
-FSLR,clean_energy
-ENPH,clean_energy
-NEE,clean_energy
-BE,clean_energy
-PLUG,clean_energy
-RUN,clean_energy
-SEDG,clean_energy
-ARRY,clean_energy
-NXT,clean_energy
-SHLS,clean_energy
-CSIQ,clean_energy
-JKS,clean_energy
-BEP,clean_energy
-AES,clean_energy
-ORA,clean_energy
-MARA,bitcoin_mining
-RIOT,bitcoin_mining
-CLSK,bitcoin_mining
-CORZ,bitcoin_mining
-IREN,bitcoin_mining
-CIFR,bitcoin_mining
-HUT,bitcoin_mining
-WULF,bitcoin_mining
-BITF,bitcoin_mining
-HIVE,bitcoin_mining
-BTDR,bitcoin_mining
-BTBT,bitcoin_mining
-CAN,bitcoin_mining
-APLD,bitcoin_mining
-GLXY,bitcoin_mining
-NVDA,semiconductors
-TSM,semiconductors
-AVGO,semiconductors
-AMD,semiconductors
-ASML,semiconductors
-QCOM,semiconductors
-TXN,semiconductors
-AMAT,semiconductors
-MU,semiconductors
-LRCX,semiconductors
-KLAC,semiconductors
-ADI,semiconductors
-MRVL,semiconductors
-INTC,semiconductors
-ARM,semiconductors
-AAPL,electronics
-SONY,electronics
-DELL,electronics
-SMCI,electronics
-HPE,electronics
-HPQ,electronics
-APH,electronics
-TEL,electronics
-JBL,electronics
-FLEX,electronics
-CLS,electronics
-SANM,electronics
-GRMN,electronics
-LOGI,electronics
-VSH,electronics
-CEG,nuclear
-CCJ,nuclear
-VST,nuclear
-TLN,nuclear
-BWXT,nuclear
-OKLO,nuclear
-SMR,nuclear
-LEU,nuclear
-UEC,nuclear
-UUUU,nuclear
-NXE,nuclear
-DNN,nuclear
-NNE,nuclear
-LTBR,nuclear
-EU,nuclear
-FLNC,battery_storage
-EOSE,battery_storage
-STEM,battery_storage
-ENS,battery_storage
-ENVX,battery_storage
-QS,battery_storage
-SLDP,battery_storage
-SES,battery_storage
-AMPX,battery_storage
-MVST,battery_storage
-GWH,battery_storage
-ALB,battery_storage
-LAC,battery_storage
-SQM,battery_storage
-VRT,cooling
-MOD,cooling
-NVT,cooling
-JCI,cooling
-CARR,cooling
-TT,cooling
-LII,cooling
-AAON,cooling
-WSO,cooling
-FIX,cooling
-LMB,cooling
-CSWI,cooling
-EMR,cooling
-GEV,turbines
-GE,turbines
-HWM,turbines
-CW,turbines
-CAT,turbines
-CMI,turbines
-ETN,turbines
-BW,turbines
-PSIX,turbines
-RRX,turbines
-AGX,turbines
-AMBA,ai_vision
-CGNX,ai_vision
-MBLY,ai_vision
-TDY,ai_vision
-OUST,ai_vision
-LAZR,ai_vision
-INVZ,ai_vision
-AEVA,ai_vision
-MVIS,ai_vision
-HIMX,ai_vision
-VUZI,ai_vision
-REKR,ai_vision
-EVLV,ai_vision
-MDT,medical_devices
-ABT,medical_devices
-BSX,medical_devices
-SYK,medical_devices
-EW,medical_devices
-ZBH,medical_devices
-BDX,medical_devices
-DXCM,medical_devices
-PODD,medical_devices
-RMD,medical_devices
-GEHC,medical_devices
-PEN,medical_devices
-IRTC,medical_devices
-TNDM,medical_devices
-NVCR,medical_devices
-ISRG,medical_robotics
-PRCT,medical_robotics
-GMED,medical_robotics
-ARAY,medical_robotics
-STXS,medical_robotics
-RBOT,medical_robotics
-EDAP,medical_robotics
-MYO,medical_robotics
-SERV,miniature_robotics
-RCAT,miniature_robotics
-UMAC,miniature_robotics
-ONDS,miniature_robotics
-DPRO,miniature_robotics
-MBOT,miniature_robotics
-RR,miniature_robotics
-PDYN,miniature_robotics
-KSCP,miniature_robotics
-LMT,defense
-RTX,defense
-NOC,defense
-GD,defense
-LHX,defense
-HII,defense
-TDG,defense
-HEI,defense
-LDOS,defense
-AXON,defense
-PLTR,defense
-KTOS,defense
-AVAV,defense
-RKLB,defense
-BA,defense
-JOBY,evtol
-ACHR,evtol
-EVTL,evtol
-EH,evtol
-EVEX,evtol
-BLDE,evtol
-SRFM,evtol
-VTOL,evtol
-HOVR,evtol
-XTIA,evtol
-AIRO,evtol
-EL,lipstick
-ELF,lipstick
-COTY,lipstick
-ULTA,lipstick
-ODD,lipstick
-IPAR,lipstick
-SBH,lipstick
-EPC,lipstick
-SPY,benchmark
-QQQ,benchmark
-IWM,benchmark
-SMH,benchmark
-ICLN,benchmark
-URA,benchmark
-ITA,benchmark
-IHI,benchmark
-BOTZ,benchmark
-XLI,benchmark
-XLV,benchmark
-XLE,benchmark
+ticker,industry,name
+LITE,photonics,Lumentum Holdings Inc.
+COHR,photonics,Coherent Corp.
+IPGP,photonics,Ipg Photonics Corp
+MKSI,photonics,Mks Inc
+FN,photonics,Fabrinet
+LASR,photonics,"Nlight, Inc."
+AAOI,photonics,"Applied Optoelectronics, Inc."
+POET,photonics,Poet Technologies Inc.
+LPTH,photonics,Lightpath Technologies Inc
+KOPN,photonics,Kopin Corp
+VIAV,photonics,Viavi Solutions Inc.
+CIEN,photonics,Ciena Corp
+GLW,photonics,Corning Inc /Ny
+OLED,photonics,Universal Display Corp \Pa\
+VECO,photonics,Veeco Instruments Inc
+FSLR,clean_energy,"First Solar, Inc."
+ENPH,clean_energy,"Enphase Energy, Inc."
+NEE,clean_energy,Nextera Energy Inc
+BE,clean_energy,Bloom Energy Corp
+PLUG,clean_energy,Plug Power Inc
+RUN,clean_energy,Sunrun Inc.
+SEDG,clean_energy,"Solaredge Technologies, Inc."
+ARRY,clean_energy,"Array Technologies, Inc."
+NXT,clean_energy,Nextpower Inc.
+SHLS,clean_energy,"Shoals Technologies Group, Inc."
+CSIQ,clean_energy,Canadian Solar Inc.
+JKS,clean_energy,"Jinkosolar Holding Co., Ltd."
+BEP,clean_energy,Brookfield Renewable Partners L.P.
+AES,clean_energy,Aes Corp
+ORA,clean_energy,"Ormat Technologies, Inc."
+MARA,bitcoin_mining,"Mara Holdings, Inc."
+RIOT,bitcoin_mining,"Riot Platforms, Inc."
+CLSK,bitcoin_mining,"Cleanspark, Inc."
+CORZ,bitcoin_mining,"Core Scientific, Inc./Tx"
+IREN,bitcoin_mining,Iren Ltd
+CIFR,bitcoin_mining,Cipher Digital Inc.
+HUT,bitcoin_mining,Hut 8 Corp.
+WULF,bitcoin_mining,Terawulf Inc.
+BITF,bitcoin_mining,Bitfarms Ltd
+HIVE,bitcoin_mining,Hive Digital Technologies Ltd.
+BTDR,bitcoin_mining,Bitdeer Technologies Group
+BTBT,bitcoin_mining,"Bit Digital, Inc"
+CAN,bitcoin_mining,Canaan Inc.
+APLD,bitcoin_mining,Applied Digital Corp.
+GLXY,bitcoin_mining,Galaxy Digital Inc.
+NVDA,semiconductors,Nvidia Corp
+TSM,semiconductors,Taiwan Semiconductor Manufacturing Co Ltd
+AVGO,semiconductors,Broadcom Inc.
+AMD,semiconductors,Advanced Micro Devices Inc
+ASML,semiconductors,Asml Holding Nv
+QCOM,semiconductors,Qualcomm Inc/De
+TXN,semiconductors,Texas Instruments Inc
+AMAT,semiconductors,Applied Materials Inc /De
+MU,semiconductors,Micron Technology Inc
+LRCX,semiconductors,Lam Research Corp
+KLAC,semiconductors,Kla Corp
+ADI,semiconductors,Analog Devices Inc
+MRVL,semiconductors,"Marvell Technology, Inc."
+INTC,semiconductors,Intel Corp
+ARM,semiconductors,Arm Holdings Plc /Uk
+AAPL,electronics,Apple Inc.
+SONY,electronics,Sony Group Corp
+DELL,electronics,Dell Technologies Inc.
+SMCI,electronics,"Super Micro Computer, Inc."
+HPE,electronics,Hewlett Packard Enterprise Co
+HPQ,electronics,Hp Inc
+APH,electronics,Amphenol Corp /De/
+TEL,electronics,Te Connectivity Plc
+JBL,electronics,Jabil Inc
+FLEX,electronics,Flex Ltd.
+CLS,electronics,Celestica Inc
+SANM,electronics,Sanmina Corp
+GRMN,electronics,Garmin Ltd
+LOGI,electronics,Logitech International S.A.
+VSH,electronics,Vishay Intertechnology Inc
+CEG,nuclear,Constellation Energy Corp
+CCJ,nuclear,Cameco Corp
+VST,nuclear,Vistra Corp.
+TLN,nuclear,Talen Energy Corp
+BWXT,nuclear,"Bwx Technologies, Inc."
+OKLO,nuclear,Oklo Inc.
+SMR,nuclear,Nuscale Power Corp
+LEU,nuclear,Centrus Energy Corp
+UEC,nuclear,Uranium Energy Corp
+UUUU,nuclear,Energy Fuels Inc
+NXE,nuclear,Nexgen Energy Ltd.
+DNN,nuclear,Denison Mines Corp.
+NNE,nuclear,Nano Nuclear Energy Inc.
+LTBR,nuclear,Lightbridge Corp
+EU,nuclear,Encore Energy Corp.
+FLNC,battery_storage,"Fluence Energy, Inc."
+EOSE,battery_storage,"Eos Energy Enterprises, Inc."
+STEM,battery_storage,"Stem, Inc."
+ENS,battery_storage,Enersys
+ENVX,battery_storage,Enovix Corp
+QS,battery_storage,Quantumscape Corp
+SLDP,battery_storage,"Solid Power, Inc."
+SES,battery_storage,Ses Ai Corp
+AMPX,battery_storage,"Amprius Technologies, Inc."
+MVST,battery_storage,"Microvast Holdings, Inc."
+GWH,battery_storage,"Ess Tech, Inc."
+ALB,battery_storage,Albemarle Corp
+LAC,battery_storage,Lithium Americas Corp.
+SQM,battery_storage,Chemical & Mining Co Of Chile Inc
+VRT,cooling,Vertiv Holdings Co
+MOD,cooling,Modine Manufacturing Co
+NVT,cooling,Nvent Electric Plc
+JCI,cooling,Johnson Controls International Plc
+CARR,cooling,Carrier Global Corp
+TT,cooling,Trane Technologies Plc
+LII,cooling,Lennox International Inc
+AAON,cooling,"Aaon, Inc."
+WSO,cooling,Watsco Inc
+FIX,cooling,Comfort Systems Usa Inc
+LMB,cooling,"Limbach Holdings, Inc."
+CSWI,cooling,CSW Industrials
+EMR,cooling,Emerson Electric Co
+GEV,turbines,Ge Vernova Inc.
+GE,turbines,General Electric Co
+HWM,turbines,Howmet Aerospace Inc.
+CW,turbines,Curtiss Wright Corp
+CAT,turbines,Caterpillar Inc
+CMI,turbines,Cummins Inc
+ETN,turbines,Eaton Corp Plc
+BW,turbines,"Babcock & Wilcox Enterprises, Inc."
+PSIX,turbines,"Power Solutions International, Inc."
+RRX,turbines,Regal Rexnord Corp
+AGX,turbines,Argan Inc
+AMBA,ai_vision,Ambarella Inc
+CGNX,ai_vision,Cognex Corp
+MBLY,ai_vision,Mobileye Global Inc.
+TDY,ai_vision,Teledyne Technologies Inc
+OUST,ai_vision,"Ouster, Inc."
+LAZR,ai_vision,Luminar Technologies
+INVZ,ai_vision,Innoviz Technologies Ltd.
+AEVA,ai_vision,"Aeva Technologies, Inc."
+MVIS,ai_vision,"Microvision, Inc."
+HIMX,ai_vision,"Himax Technologies, Inc."
+VUZI,ai_vision,Vuzix Corp
+REKR,ai_vision,"Rekor Systems, Inc."
+EVLV,ai_vision,"Evolv Technologies Holdings, Inc."
+MDT,medical_devices,Medtronic Plc
+ABT,medical_devices,Abbott Laboratories
+BSX,medical_devices,Boston Scientific Corp
+SYK,medical_devices,Stryker Corp
+EW,medical_devices,Edwards Lifesciences Corp
+ZBH,medical_devices,"Zimmer Biomet Holdings, Inc."
+BDX,medical_devices,Becton Dickinson & Co
+DXCM,medical_devices,Dexcom Inc
+PODD,medical_devices,Insulet Corp
+RMD,medical_devices,Resmed Inc
+GEHC,medical_devices,Ge Healthcare Technologies Inc.
+PEN,medical_devices,Penumbra Inc
+IRTC,medical_devices,"Irhythm Holdings, Inc."
+TNDM,medical_devices,Tandem Diabetes Care Inc
+NVCR,medical_devices,Novocure Ltd
+ISRG,medical_robotics,Intuitive Surgical Inc
+PRCT,medical_robotics,Procept Biorobotics Corp
+GMED,medical_robotics,Globus Medical Inc
+ARAY,medical_robotics,Accuray Inc
+STXS,medical_robotics,"Stereotaxis, Inc."
+RBOT,medical_robotics,Vicarious Surgical Inc.
+EDAP,medical_robotics,EDAP TMS
+MYO,medical_robotics,"Myomo, Inc."
+SERV,miniature_robotics,Serve Robotics Inc. /De/
+RCAT,miniature_robotics,"Red Cat Holdings, Inc."
+UMAC,miniature_robotics,"Unusual Machines, Inc."
+ONDS,miniature_robotics,Ondas Inc.
+DPRO,miniature_robotics,Draganfly Inc.
+MBOT,miniature_robotics,Microbot Medical Inc.
+RR,miniature_robotics,Richtech Robotics Inc.
+PDYN,miniature_robotics,Palladyne Ai Corp.
+KSCP,miniature_robotics,"Knightscope, Inc."
+LMT,defense,Lockheed Martin Corp
+RTX,defense,Rtx Corp
+NOC,defense,Northrop Grumman Corp /De/
+GD,defense,General Dynamics Corp
+LHX,defense,"L3Harris Technologies, Inc. /De/"
+HII,defense,"Huntington Ingalls Industries, Inc."
+TDG,defense,Transdigm Group Inc
+HEI,defense,Heico Corp
+LDOS,defense,"Leidos Holdings, Inc."
+AXON,defense,"Axon Enterprise, Inc."
+PLTR,defense,Palantir Technologies Inc.
+KTOS,defense,"Kratos Defense & Security Solutions, Inc."
+AVAV,defense,Aerovironment Inc
+RKLB,defense,Rocket Lab Corp
+BA,defense,Boeing Co
+JOBY,evtol,"Joby Aviation, Inc."
+ACHR,evtol,Archer Aviation Inc.
+EVTL,evtol,Vertical Aerospace Ltd.
+EH,evtol,Ehang Holdings Ltd
+EVEX,evtol,"Eve Holding, Inc."
+BLDE,evtol,Blade Air Mobility
+SRFM,evtol,Surf Air Mobility Inc.
+VTOL,evtol,Bristow Group Inc.
+HOVR,evtol,New Horizon Aircraft Ltd.
+XTIA,evtol,"Xti Aerospace, Inc."
+AIRO,evtol,"Airo Group Holdings, Inc."
+EL,lipstick,Estee Lauder Companies Inc
+ELF,lipstick,"E.L.F. Beauty, Inc."
+COTY,lipstick,Coty Inc.
+ULTA,lipstick,"Ulta Beauty, Inc."
+ODD,lipstick,Oddity Tech Ltd
+IPAR,lipstick,Interparfums Inc
+SBH,lipstick,"Sally Beauty Holdings, Inc."
+EPC,lipstick,Edgewell Personal Care Co
+SPY,benchmark,Spdr S&P 500 Etf Trust
+QQQ,benchmark,"Invesco Qqq Trust, Series 1"
+IWM,benchmark,iShares Russell 2000 ETF
+SMH,benchmark,VanEck Semiconductor ETF
+ICLN,benchmark,iShares Global Clean Energy ETF
+URA,benchmark,Global X Uranium ETF
+ITA,benchmark,iShares US Aerospace & Defense ETF
+IHI,benchmark,iShares US Medical Devices ETF
+BOTZ,benchmark,Global X Robotics & AI ETF
+XLI,benchmark,Industrial Select SPDR
+XLV,benchmark,Health Care Select SPDR
+XLE,benchmark,Energy Select SPDR

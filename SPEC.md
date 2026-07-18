@@ -128,13 +128,17 @@ color-blind-safe palette, no jargon without a hover explainer.
 - **Weekly agent job:** sentiment + event research with citations
 - All model outputs cached to the store; dashboard reads the store only (instant load)
 
-## 8. Build order (after sign-off)
+## 8. Build status (all delivered 2026-07-17)
 
-1. Snapshot collector (time-critical — options history starts when it starts)
-2. Backfill + store schema
-3. Core window metrics → pages 1–3
-4. Options layer + Greeks/GEX → page 4
-5. Models (Poisson → Merton → Hawkes) → page 5
-6. Sentiment/events agents → page 6
-7. Scoreboard + backtest → page 7
-8. Lipstick panel → page 8, polish pass ("wow" pass: layout, animations, onboarding tour)
+1. ✅ Snapshot collector + open interest, scheduled 4×/weekday
+2. ✅ Equity backfill (52 Fridays minute bars, 2y daily) + Parquet store
+3. ✅ Core window metrics → pages 1–3
+4. ✅ Options layer + Greeks/GEX + **trade tape & block classification** → page 4
+5. ✅ Models (Poisson → Merton → Hawkes) → page 5
+6. ✅ Sentiment/events agent with citations → page 6
+7. ✅ Scoreboard + proxy backtest honesty panel → page 7
+8. ✅ SEC: 13F institutional panel + Form 4 insiders → page 8 (Institutions & Insiders)
+9. ✅ Lipstick panel incl. XBRL quarterly revenue → page 9
+10. ✅ Fresh-machine bootstrap (`setup_fresh.py`), portable launchers,
+    schedule registration script (`collector/register_schedule.ps1` — the
+    trade-tape and nightly-refresh jobs are optional and not auto-registered)

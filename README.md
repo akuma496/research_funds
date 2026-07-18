@@ -2,8 +2,18 @@
 
 Personal research dashboard studying market behavior at four intraday windows
 (pre-open, midday, power hour, after hours — US Central) across 15 thematic
-industries, with options flow, jump models, sentiment, and a 5-horizon
-statistical scoreboard. Full design: [SPEC.md](SPEC.md).
+industries, with options flow + block tape, jump models, SEC institutional and
+insider data, sentiment, and a 5-horizon statistical scoreboard.
+Full design: [SPEC.md](SPEC.md).
+
+## Fresh setup (new machine or new user)
+
+1. Install Python 3.12+ (python.org, check "Add to PATH").
+2. Free account at alpaca.markets → generate API keys.
+3. Create `.env` in this folder: `ALPACA_API_KEY=...` and `ALPACA_SECRET_KEY=...`
+4. `python setup_fresh.py` — installs packages, backfills a year of data (~10 min), builds everything.
+5. Optional automation: `powershell -ExecutionPolicy Bypass -File collector\register_schedule.ps1`
+6. Optional SEC data (13F/insiders/revenue, ~15 min): `python pipeline\sec_refresh.py`
 
 ## Daily use
 
@@ -13,8 +23,10 @@ http://localhost:8501. Close the black console window to stop it.
 **Refresh data** (evenings, or after a Friday):
 
 ```
-python pipeline\refresh_all.py
+collector\run_refresh.bat        (fetches the day's bars + trade tape, rebuilds everything)
 ```
+
+**Refresh SEC data** (weekly is plenty): `python pipeline\sec_refresh.py`
 
 Options chain snapshots are captured automatically 4× every weekday by
 Windows Task Scheduler (see [collector/README_collector.md](collector/README_collector.md)) —
@@ -24,9 +36,9 @@ the laptop just needs to be on or asleep.
 
 | Path | What |
 |---|---|
-| `collector/` | Data capture: options snapshots (scheduled), equity backfill |
-| `pipeline/` | parse_raw → compute (metrics + Merton/Poisson/Hawkes) → options_analytics → scoreboard |
-| `app/dashboard.py` | 8-page Streamlit app |
+| `collector/` | Data capture: options snapshots (scheduled), trade tape, equity backfill |
+| `pipeline/` | parse_raw → compute (metrics + Merton/Poisson/Hawkes) → options_analytics → options_blocks → scoreboard; sec_refresh (13F/insiders/revenue) |
+| `app/dashboard.py` | 9-page Streamlit app |
 | `data/raw/` | Raw API responses (gzipped JSON, git-ignored) |
 | `data/store/` | Parquet tables + sentiment.json the app reads (git-ignored) |
 | `data/universe.csv` | The 219-ticker universe, tagged by industry |

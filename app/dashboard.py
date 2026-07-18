@@ -67,6 +67,112 @@ def load(name):
     return pd.read_parquet(p) if p.exists() else pd.DataFrame()
 
 
+# Every table column: (friendly header, plain-English hover explanation).
+COLUMN_HELP = {
+    "ticker": ("Ticker", "The stock's exchange symbol."),
+    "company": ("Company", "Company (or fund) name."),
+    "industry": ("Industry", "Which of the 15 tracked industries it belongs to."),
+    "window": ("Time window", "Which of the four Friday windows (US Central): "
+               "pre-open 8:00–8:30, midday 10:15–10:45, power hour 2:30–3:00, after hours 3:00–5:00."),
+    "ret": ("Return", "Price change during that time window."),
+    "volume": ("Volume", "Shares traded during the window."),
+    "rvol": ("Rel. volume", "Volume vs this stock's 52-week normal for the same window. "
+             "2.0× means it traded double its usual amount."),
+    "vol_z": ("Volume surprise", "How unusual the volume was, in standard deviations. "
+              "Above +2σ is genuinely abnormal — someone showed up."),
+    "rv": ("Volatility", "Realized minute-to-minute price movement inside the window."),
+    "vwap_dev": ("VWAP gap", "Close vs the volume-weighted average price. Positive = "
+                 "finished above the average price paid — buyers won the window."),
+    "price": ("Price", "Latest share price."),
+    "mom_1w": ("1-week", "Price change over the last week."),
+    "mom_1m": ("1-month", "Price change over the last month."),
+    "mom_3m": ("3-month", "Price change over the last 3 months."),
+    "mom_6m": ("6-month", "Price change over the last 6 months."),
+    "mom_12m1m": ("12m − 1m", "Return over the past year excluding the latest month — "
+                  "the classic academic momentum measure."),
+    "alpha_ann": ("Alpha /yr", "Yearly return above what its market exposure would predict. "
+                  "Positive = beating the market risk-adjusted; negative = lagging it."),
+    "beta": ("Beta", "Market sensitivity: 1.0 moves with the S&P 500, 2.0 swings twice as hard."),
+    "rsi14": ("RSI", "Momentum oscillator 0–100. Above ~70 is often called overbought, below ~30 oversold."),
+    "vol_ann": ("Volatility /yr", "Annualized daily volatility — how bumpy the ride is. "
+                "The S&P is roughly 15–20%."),
+    "dist_52w_high": ("Off 52w high", "How far below its one-year high the price sits."),
+    "jump_var_share": ("Jump risk", "Share of total risk arriving as sudden jumps rather than "
+                       "day-to-day wiggle (Merton model). High = gap-prone."),
+    "jumps_per_year": ("Jumps /yr", "Model-estimated abnormal jump days per year."),
+    "mu_j": ("Avg jump", "Average size of a jump when one happens; negative = jumps tend to be drops."),
+    "sigma_j": ("Jump spread", "How variable the jump sizes are."),
+    "sigma_ann": ("Baseline vol", "The smooth, non-jump part of volatility, annualized."),
+    "p_cluster_6m": ("Cluster risk", "Model probability of a burst of industry-wide shock days "
+                     "(3+ within two weeks) in the next 6 months."),
+    "sentiment": ("Sentiment", "News/analyst tone from cited public sources: −1 bearish to +1 bullish."),
+    "score": ("Score", "Composite of all signals, weighted for this horizon. "
+              "Higher = stronger combined evidence. A ranking, not advice."),
+    "≤$200": ("≤$200", "Yes = one whole share costs $200 or less."),
+    "≤$200/share": ("≤$200/share", "Yes = one whole share costs $200 or less."),
+    "spot": ("Stock price", "The underlying share price at snapshot time."),
+    "atm_iv": ("ATM impl. vol", "Expected future volatility priced into at-the-money options."),
+    "pc_ratio_traded": ("Put/Call", "Traded put contracts per call contract. Above 1 = more "
+                        "put (downside) activity."),
+    "call_prem_at_ask": ("Call $ at ask", "Dollars of call premium bought aggressively (at the ask)."),
+    "put_prem_at_ask": ("Put $ at ask", "Dollars of put premium bought aggressively (at the ask)."),
+    "occ": ("Contract", "The standardized option contract code (ticker, expiry, C/P, strike)."),
+    "cp": ("Type", "CALL = upside bet or hedge; PUT = downside bet or protection."),
+    "strike": ("Strike", "The price at which the option can be exercised."),
+    "expiry": ("Expires", "The option's expiration date."),
+    "last_price": ("Last price", "Price of the most recent trade on this contract."),
+    "last_size": ("Last size", "Contracts in that most recent trade."),
+    "premium": ("Premium", "Dollars paid: price × contracts × 100 shares."),
+    "iv": ("Impl. vol", "Volatility implied by this option's price."),
+    "delta": ("Delta", "Moves ~this much per $1 stock move; also roughly the market's "
+              "probability it finishes in the money."),
+    "side": ("Side", "Buyer- or seller-initiated, judged from the quote (at ask/at bid) "
+             "or the price sequence (tick)."),
+    "size": ("Contracts", "Number of contracts in this single print. 50+ is block-sized."),
+    "ts": ("Time", "Time of the print (US Central)."),
+    "n_contracts": ("# contracts", "Option contracts listed in the snapshot."),
+    "total_oi": ("Open interest", "Total contracts outstanding across the chain."),
+    "n_form4_90d": ("# filings", "Form 4 insider filings in the last 90 days."),
+    "buy_shares": ("Shares bought", "Shares insiders bought on the open market (code P)."),
+    "sell_shares": ("Shares sold", "Shares insiders sold (code S)."),
+    "buy_value": ("$ bought", "Dollar value of insider open-market buys."),
+    "sell_value": ("$ sold", "Dollar value of insider sales."),
+    "net_value": ("Net insider $", "Buys minus sells. Positive = insiders putting their own money in."),
+    "chg": ("Change QoQ", "Panel holdings: latest quarter vs prior quarter."),
+    "micro_alpha_w3": ("Power-hour alpha", "Last Friday's power-hour return beyond what the "
+                       "market's move explains."),
+    "volz_w3": ("Power-hour vol z", "Volume surprise in last Friday's power hour."),
+    "dollar_vol_21d": ("$ volume /day", "Average daily dollars traded (21 days) — liquidity."),
+}
+
+
+def col_cfg(df, extra: dict = None) -> dict:
+    cfg = {c: st.column_config.Column(label=lab, help=hlp)
+           for c, (lab, hlp) in COLUMN_HELP.items() if c in df.columns}
+    for c, (lab, hlp) in (extra or {}).items():
+        cfg[c] = st.column_config.Column(label=lab, help=hlp)
+    return cfg
+
+
+@st.cache_data(ttl=600)
+def name_map() -> dict:
+    u = load("universe")
+    if "name" not in u.columns:
+        return {}
+    return dict(zip(u["ticker"], u["name"]))
+
+
+def t_label(t: str) -> str:
+    n = name_map().get(t, "")
+    return f"{t} — {n}" if n and n != t else t
+
+
+def add_name(df: pd.DataFrame, after: str = "ticker") -> pd.DataFrame:
+    df = df.copy()
+    df.insert(df.columns.get_loc(after) + 1, "company", df[after].map(name_map()))
+    return df
+
+
 def friday_tag(d: str) -> str:
     dt = date.fromisoformat(d)
     third = 15 + (4 - date(dt.year, dt.month, 15).weekday()) % 7
@@ -126,11 +232,12 @@ def page_command_center():
     st.subheader("Biggest single-stock moves that day")
     top = d.reindex(d["ret"].abs().sort_values(ascending=False).index)[
         ["ticker", "industry", "window", "ret", "rvol", "vol_z", "volume"]].head(15)
+    top = add_name(top)
     top["industry"] = top["industry"].map(ind_name)
     top["window"] = top["window"].map(lambda w: WINDOW_LABEL[w].split("·")[0].strip())
     st.dataframe(top.style.format({"ret": "{:+.2%}", "rvol": "{:.1f}×",
                                    "vol_z": "{:+.1f}σ", "volume": "{:,.0f}"}),
-                 width="stretch", hide_index=True)
+                 width="stretch", hide_index=True, column_config=col_cfg(top))
 
 
 # ================================================================ 2 · industry explorer
@@ -159,15 +266,19 @@ def page_industry():
                .rename(columns={"mean": "avg return", "std": "volatility"}))
     stats.index = [WINDOW_LABEL[w] for w in stats.index]
     c1, c2 = st.columns(2)
-    c1.dataframe(stats.style.format("{:.3%}"), width="stretch")
+    c1.dataframe(stats.style.format("{:.3%}"), width="stretch",
+                 column_config=col_cfg(stats, extra={
+                     "avg return": ("Avg return", "Average return in this window across all 52 Fridays."),
+                     "volatility": ("Spread", "How much that window's return varies Friday to Friday.")}))
     m = df[df.ticker.isin(members)][["ticker", "price", "mom_1m", "mom_6m",
                                      "alpha_ann", "vol_ann", "whole_share_200"]]
+    m = add_name(m)
     m = m.rename(columns={"whole_share_200": "≤$200/share"})
     c2.dataframe(m.sort_values("mom_1m", ascending=False)
                   .style.format({"price": "${:.2f}", "mom_1m": "{:+.1%}",
                                  "mom_6m": "{:+.1%}", "alpha_ann": "{:+.1%}",
                                  "vol_ann": "{:.0%}"}),
-                 width="stretch", hide_index=True)
+                 width="stretch", hide_index=True, column_config=col_cfg(m))
 
 
 # ================================================================ 3 · ticker deep dive
@@ -176,7 +287,7 @@ def page_ticker():
     mb_dates = sorted(load("window_metrics")["date"].unique(), reverse=True)
     uni = load("universe")
     c1, c2 = st.columns(2)
-    tick = c1.selectbox("Ticker", sorted(uni.ticker.unique()))
+    tick = c1.selectbox("Ticker", sorted(uni.ticker.unique()), format_func=t_label)
     day = c2.selectbox("Friday", mb_dates)
 
     mb = pd.read_parquet(STORE / "bars_minute.parquet",
@@ -216,7 +327,7 @@ def page_ticker():
     wmt["window"] = wmt["window"].map(WINDOW_LABEL)
     st.dataframe(wmt.style.format({"ret": "{:+.2%}", "volume": "{:,.0f}", "rvol": "{:.1f}×",
                                    "vol_z": "{:+.1f}σ", "rv": "{:.3%}", "vwap_dev": "{:+.2%}"}),
-                 width="stretch", hide_index=True)
+                 width="stretch", hide_index=True, column_config=col_cfg(wmt))
 
 
 # ================================================================ 4 · options flow
@@ -269,11 +380,13 @@ def page_options():
     if blk.empty:
         st.write("No at-ask prints in this snapshot.")
     else:
+        blk = add_name(blk, after="underlying")
         blk["cp"] = blk["cp"].map({"C": "CALL", "P": "PUT"})
         st.dataframe(blk.style.format({"strike": "{:.1f}", "last_price": "{:.2f}",
                                        "premium": "${:,.0f}", "iv": "{:.0%}",
                                        "delta": "{:+.2f}"}),
-                     width="stretch", hide_index=True)
+                     width="stretch", hide_index=True, column_config=col_cfg(blk, extra={
+                         "underlying": ("Ticker", "The stock the option is on.")}))
 
     t = a[["underlying", "spot", "atm_iv", "pc_ratio_traded",
            "call_prem_at_ask", "put_prem_at_ask"]]
@@ -281,7 +394,44 @@ def page_options():
                                  "pc_ratio_traded": "{:.2f}",
                                  "call_prem_at_ask": "${:,.0f}",
                                  "put_prem_at_ask": "${:,.0f}"}),
-                 width="stretch", hide_index=True)
+                 width="stretch", hide_index=True, column_config=col_cfg(t, extra={
+                     "underlying": ("Ticker", "The stock the options are on.")}))
+
+    # ---- block tape (full trade-by-trade prints, collected after each close) ----
+    tape = load("options_tape")
+    st.subheader("Block tape — the day's biggest options prints")
+    if tape.empty or day not in set(tape["date"]):
+        st.info("No trade tape collected for this date yet. The tape collector runs "
+                "at 3:25 PM Central each weekday and covers every print of the day.")
+        return
+    tp = tape[(tape.date == day) & tape.is_block].copy()
+    st.caption(f"{len(tp):,} block prints (≥50 contracts or ≥$25k premium) from "
+               f"{tape[tape.date == day].shape[0]:,} sizeable prints collected for {day}. "
+               "Side: quote rule first, tick rule fallback.")
+    buys = tp[tp.side.str.startswith("buy")]
+    net = (buys.groupby(["underlying", "cp"])["premium"].sum().unstack(fill_value=0)
+               .rename(columns={"C": "call_buys", "P": "put_buys"}))
+    net["total"] = net.sum(axis=1)
+    net = net.sort_values("total", ascending=False).head(15)
+    fig = go.Figure()
+    fig.add_trace(go.Bar(y=net.index, x=net.get("call_buys", 0), name="Call buying",
+                         orientation="h", marker_color="#199e70"))
+    fig.add_trace(go.Bar(y=net.index, x=net.get("put_buys", 0), name="Put buying",
+                         orientation="h", marker_color="#e66767"))
+    fig.update_layout(barmode="stack", title="Aggressive block premium by underlying "
+                                             "(buyer-initiated only)")
+    st.plotly_chart(style_fig(fig, 420), width="stretch")
+    show = tp.sort_values("premium", ascending=False).head(30)[
+        ["underlying", "cp", "strike", "expiry", "ts", "price", "size",
+         "premium", "side"]]
+    show = add_name(show, after="underlying")
+    show["cp"] = show["cp"].map({"C": "CALL", "P": "PUT"})
+    show["ts"] = pd.to_datetime(show["ts"]).dt.tz_convert("America/Chicago").dt.strftime("%H:%M:%S")
+    st.dataframe(show.style.format({"strike": "{:.1f}", "price": "{:.2f}",
+                                    "premium": "${:,.0f}"}),
+                 width="stretch", hide_index=True, column_config=col_cfg(show, extra={
+                     "underlying": ("Ticker", "The stock the option is on."),
+                     "price": ("Price", "Price paid per contract in this print.")}))
 
 
 # ================================================================ 5 · models lab
@@ -300,7 +450,7 @@ def page_models():
         marker=dict(size=9, color=m["jumps_per_year"], colorscale=SEQ_BLUE,
                     colorbar=dict(title="jumps/yr", tickfont=dict(color=MUTED)),
                     line=dict(width=1, color=SURFACE)),
-        text=m["ticker"] + " · " + m["industry"].map(ind_name),
+        text=m["ticker"].map(t_label) + " · " + m["industry"].map(ind_name),
         hovertemplate="%{text}<br>diffusion vol %{x:.0%} · jump share %{y:.0%}<extra></extra>"))
     fig.update_layout(title="Jump risk map (each dot = one stock)",
                       xaxis_title="baseline volatility (annualized)",
@@ -340,13 +490,13 @@ def page_models():
     c2.plotly_chart(style_fig(fig, 380), width="stretch")
 
     with st.expander("Full Merton parameter table"):
-        st.dataframe(mp[["ticker", "industry", "sigma_ann", "jumps_per_year",
-                         "mu_j", "sigma_j", "jump_var_share"]]
-                     .sort_values("jump_var_share", ascending=False)
-                     .style.format({"sigma_ann": "{:.0%}", "jumps_per_year": "{:.1f}",
-                                    "mu_j": "{:+.3f}", "sigma_j": "{:.3f}",
-                                    "jump_var_share": "{:.0%}"}),
-                     width="stretch", hide_index=True)
+        mt = mp[["ticker", "industry", "sigma_ann", "jumps_per_year",
+                 "mu_j", "sigma_j", "jump_var_share"]].sort_values(
+                     "jump_var_share", ascending=False)
+        st.dataframe(mt.style.format({"sigma_ann": "{:.0%}", "jumps_per_year": "{:.1f}",
+                                      "mu_j": "{:+.3f}", "sigma_j": "{:.3f}",
+                                      "jump_var_share": "{:.0%}"}),
+                     width="stretch", hide_index=True, column_config=col_cfg(mt))
 
 
 # ================================================================ 6 · sentiment
@@ -415,6 +565,7 @@ def page_scoreboard():
     top = d.head(20)[["ticker", "industry", "price", f"score_{h}", "mom_1m", "mom_6m",
                       "alpha_ann", "vol_ann", "jump_var_share", "p_cluster_6m",
                       "sentiment_raw", "whole_share_200"]]
+    top = add_name(top)
     top = top.rename(columns={f"score_{h}": "score", "sentiment_raw": "sentiment",
                               "whole_share_200": "≤$200"})
     top["industry"] = top["industry"].map(ind_name)
@@ -423,7 +574,7 @@ def page_scoreboard():
                                    "alpha_ann": "{:+.1%}", "vol_ann": "{:.0%}",
                                    "jump_var_share": "{:.0%}", "p_cluster_6m": "{:.0%}",
                                    "sentiment": "{:+.1f}"}),
-                 width="stretch", hide_index=True)
+                 width="stretch", hide_index=True, column_config=col_cfg(top))
     st.caption("Score = weighted blend of momentum, alpha vs S&P, jump risk, event-cluster "
                "probability, Friday-window flow, and cited sentiment — weights differ by "
                "horizon (short horizons lean on flow; long horizons on risk-adjusted trend).")
@@ -446,7 +597,73 @@ def page_scoreboard():
         st.plotly_chart(style_fig(fig, 380), width="stretch")
 
 
-# ================================================================ 8 · lipstick
+# ================================================================ 8 · institutions
+def page_institutions():
+    st.title("🏛️ Institutions & Insiders")
+    inst, ins = load("inst_13f"), load("insiders")
+
+    st.subheader("Institutional panel — 13F quarterly holdings")
+    st.caption("Holdings of ~13 giant institutions (Vanguard, BlackRock, Berkshire, "
+               "Citadel, Renaissance…) from their quarterly SEC 13F filings, summed per "
+               "stock. This is a large panel, not every institution, and 13F data lags "
+               "up to 45 days — it shows positioning, not today's trades.")
+    if inst.empty:
+        st.info("13F data not fetched yet — run `python pipeline/sec_refresh.py --part 13f`.")
+    else:
+        qs = sorted(inst["report_date"].unique())
+        if len(qs) >= 2:
+            latest, prior = qs[-1], qs[-2]
+            piv = (inst.groupby(["ticker", "report_date"])["shares"].sum()
+                       .unstack("report_date"))
+            piv = piv[[prior, latest]].dropna()
+            piv["chg"] = piv[latest] / piv[prior] - 1
+            piv = piv[piv[prior] > 100_000]  # ignore dust positions
+            movers = pd.concat([piv.nlargest(10, "chg"), piv.nsmallest(10, "chg")])
+            movers = movers.sort_values("chg")
+            fig = go.Figure(go.Bar(
+                x=movers["chg"], y=[t_label(t) for t in movers.index], orientation="h",
+                marker_color=["#e66767" if v < 0 else "#199e70" for v in movers["chg"]],
+                text=[f"{v:+.0%}" for v in movers["chg"]], textposition="outside"))
+            fig.update_layout(title=f"Biggest panel position changes: {prior} → {latest}",
+                              xaxis_tickformat=".0%")
+            st.plotly_chart(style_fig(fig, 560), width="stretch")
+            tbl = piv.sort_values("chg", ascending=False).reset_index()
+            tbl = add_name(tbl)
+            with st.expander("Full panel table"):
+                st.dataframe(tbl.style.format({prior: "{:,.0f}", latest: "{:,.0f}",
+                                               "chg": "{:+.1%}"}),
+                             width="stretch", hide_index=True,
+                             column_config=col_cfg(tbl, extra={
+                                 prior: (f"Shares {prior}", "Panel shares held at the prior quarter-end."),
+                                 latest: (f"Shares {latest}", "Panel shares held at the latest reported quarter-end.")}))
+        else:
+            st.write("Only one quarter of panel data available so far.")
+
+    st.subheader("Insider activity — Form 4, last 90 days")
+    st.caption("Open-market buys (code P) vs sells (code S) by officers and directors, "
+               "from SEC Form 4 filings. Insider buying with their own money is one of "
+               "the stronger public signals; routine selling is usually noise.")
+    if ins.empty:
+        st.info("Insider data not fetched yet — run `python pipeline/sec_refresh.py --part insiders`.")
+        return
+    act = ins[(ins.buy_value > 0) | (ins.sell_value > 0)].copy()
+    act = act.reindex(act["net_value"].abs().sort_values(ascending=False).index).head(20)
+    act = act.sort_values("net_value")
+    fig = go.Figure(go.Bar(
+        x=act["net_value"], y=[t_label(t) for t in act["ticker"]], orientation="h",
+        marker_color=["#e66767" if v < 0 else "#199e70" for v in act["net_value"]],
+        text=[f"${v / 1e6:+,.1f}M" for v in act["net_value"]], textposition="outside"))
+    fig.update_layout(title="Net insider dollars (buys − sells), 90 days")
+    st.plotly_chart(style_fig(fig, 560), width="stretch")
+    full = add_name(ins.sort_values("net_value", ascending=False))
+    with st.expander("All insider activity"):
+        st.dataframe(full.style.format({"buy_shares": "{:,.0f}", "sell_shares": "{:,.0f}",
+                                        "buy_value": "${:,.0f}", "sell_value": "${:,.0f}",
+                                        "net_value": "${:+,.0f}"}),
+                     width="stretch", hide_index=True, column_config=col_cfg(full))
+
+
+# ================================================================ 9 · lipstick
 def page_lipstick():
     st.title("💄 Lipstick Index")
     st.caption("The trade-down thesis: when budgets tighten, big purchases stall but small "
@@ -478,14 +695,32 @@ def page_lipstick():
                       yaxis_tickformat=".0%")
     st.plotly_chart(style_fig(fig, 360), width="stretch")
 
-    members = load("daily_features")[lambda d: d.ticker.isin(lips)][
-        ["ticker", "price", "mom_1m", "mom_3m", "mom_6m", "beta"]]
+    members = add_name(load("daily_features")[lambda d: d.ticker.isin(lips)][
+        ["ticker", "price", "mom_1m", "mom_3m", "mom_6m", "beta"]])
     st.dataframe(members.style.format({"price": "${:.2f}", "mom_1m": "{:+.1%}",
                                        "mom_3m": "{:+.1%}", "mom_6m": "{:+.1%}",
                                        "beta": "{:.2f}"}),
-                 width="stretch", hide_index=True)
-    st.caption("Quarterly revenue from SEC filings joins this panel in a future update — "
-               "share behavior is the live proxy meanwhile.")
+                 width="stretch", hide_index=True, column_config=col_cfg(members))
+    rev = load("lipstick_revenue")
+    if not rev.empty:
+        st.subheader("Quarterly revenue — straight from SEC filings")
+        st.caption("Year-over-year revenue growth per company (XBRL data from their "
+                   "10-Q/10-K filings). Beauty revenue holding up while the economy "
+                   "wobbles is the actual lipstick-index signal.")
+        rev = rev.copy()
+        rev["period_end"] = pd.to_datetime(rev["period_end"])
+        fig = go.Figure()
+        for i, (t, g) in enumerate(rev.groupby("ticker")):
+            g = g.sort_values("period_end").tail(12)
+            yoy = g.set_index("period_end")["revenue"].pct_change(4).dropna()
+            if len(yoy):
+                fig.add_trace(go.Scatter(x=yoy.index, y=yoy.values, name=t_label(t),
+                                         mode="lines+markers",
+                                         line=dict(width=2, color=SERIES[i % len(SERIES)]),
+                                         marker=dict(size=7)))
+        fig.add_hline(y=0, line_dash="dot", line_color=MUTED)
+        fig.update_layout(title="Revenue growth, year over year", yaxis_tickformat=".0%")
+        st.plotly_chart(style_fig(fig), width="stretch")
 
 
 # ================================================================ nav
@@ -497,6 +732,7 @@ pages = st.navigation([
     st.Page(page_models, title="Models Lab", icon="🧪"),
     st.Page(page_sentiment, title="Sentiment & Events", icon="📰"),
     st.Page(page_scoreboard, title="Scoreboard", icon="🏆"),
+    st.Page(page_institutions, title="Institutions & Insiders", icon="🏛️"),
     st.Page(page_lipstick, title="Lipstick Index", icon="💄"),
 ])
 pages.run()
