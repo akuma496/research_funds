@@ -26,10 +26,12 @@ SEQ_BLUE = [[0.0, "#104281"], [0.5, "#3987e5"], [1.0, "#cde2fb"]]
 
 WINDOW_LABEL = {
     "W1": "W1 · Pre-open 8:00–8:30",
+    "OPEN": "OPEN · First half hour 8:30–9:00",
     "W2": "W2 · Midday 10:15–10:45",
     "W3": "W3 · Power hour 2:30–3:00",
     "W4": "W4 · After hours 3:00–5:00",
 }
+WINDOW_ORDER = ["W1", "OPEN", "W2", "W3", "W4"]
 IND_LABEL = {
     "photonics": "Photonics", "clean_energy": "Clean energy",
     "bitcoin_mining": "Bitcoin mining", "semiconductors": "Semiconductors",
@@ -76,10 +78,16 @@ COLUMN_HELP = {
                "pre-open 8:00–8:30, midday 10:15–10:45, power hour 2:30–3:00, after hours 3:00–5:00."),
     "ret": ("Return", "Price change during that time window."),
     "volume": ("Volume", "Shares traded during the window."),
-    "rvol": ("Rel. volume", "Volume vs this stock's 52-week normal for the same window. "
-             "2.0× means it traded double its usual amount."),
-    "vol_z": ("Volume surprise", "How unusual the volume was, in standard deviations. "
-              "Above +2σ is genuinely abnormal — someone showed up."),
+    "rvol": ("Rel. volume", "Volume vs this stock's 52-week normal for the same window "
+             "on the same kind of Friday (expiration Fridays are compared only to other "
+             "expiration Fridays). 2.0× means double the usual amount."),
+    "vol_z": ("Volume surprise", "How unusual the volume was, in standard deviations, "
+              "vs the same window on the same kind of Friday. Above +2σ is genuinely "
+              "abnormal — someone showed up."),
+    "liquid": ("Liquid", "Yes = trades at least ~$1M per day, so a small order "
+               "doesn't get eaten by the bid-ask spread."),
+    "ftype": ("Friday type", "Expiration = monthly options expiration (incl. quad "
+              "witching); these Fridays run structurally hotter than regular ones."),
     "rv": ("Volatility", "Realized minute-to-minute price movement inside the window."),
     "vwap_dev": ("VWAP gap", "Close vs the volume-weighted average price. Positive = "
                  "finished above the average price paid — buyers won the window."),
@@ -208,7 +216,7 @@ def page_command_center():
     d = wm[wm.date == day].merge(uni, on="ticker")
     d = d[~d.industry.isin(["benchmark"])]
     piv = d.pivot_table(index="industry", columns="window", values=col, aggfunc="median")
-    piv = piv.reindex(columns=["W1", "W2", "W3", "W4"])
+    piv = piv.reindex(columns=[w for w in WINDOW_ORDER if w in piv.columns])
     piv.index = [ind_name(i) for i in piv.index]
 
     if col == "ret":
@@ -252,7 +260,7 @@ def page_industry():
     hist = (d.groupby(["date", "window"])["ret"].median().reset_index()
               .pivot(index="date", columns="window", values="ret").sort_index())
     fig = go.Figure()
-    for i, w in enumerate(["W1", "W2", "W3", "W4"]):
+    for i, w in enumerate(WINDOW_ORDER):
         if w in hist:
             fig.add_trace(go.Scatter(x=hist.index, y=hist[w], name=WINDOW_LABEL[w],
                                      mode="lines", line=dict(width=2, color=SERIES[i])))
@@ -301,7 +309,7 @@ def page_ticker():
     fig = go.Figure(go.Candlestick(
         x=local, open=mb["o"], high=mb["h"], low=mb["l"], close=mb["c"],
         increasing_line_color="#199e70", decreasing_line_color="#e66767", name=tick))
-    for w, (a, b) in {"W1": (8.0, 8.5), "W2": (10.25, 10.75),
+    for w, (a, b) in {"W1": (8.0, 8.5), "OPEN": (8.5, 9.0), "W2": (10.25, 10.75),
                       "W3": (14.5, 15.0), "W4": (15.0, 17.0)}.items():
         d0 = local.iloc[0].normalize()
         fig.add_vrect(x0=d0 + pd.Timedelta(hours=a), x1=d0 + pd.Timedelta(hours=b),
@@ -315,7 +323,7 @@ def page_ticker():
         fig.add_trace(go.Scatter(x=jl, y=jp.values, mode="markers", name="Jump detected",
                                  marker=dict(size=11, color="#c98500", symbol="diamond",
                                              line=dict(width=2, color=SURFACE))))
-    fig.update_layout(title=f"{tick} — minute bars on {day} {friday_tag(day)} (Central time)",
+    fig.update_layout(title=f"{t_label(tick)} — minute bars on {day} {friday_tag(day)} (Central time)",
                       xaxis_rangeslider_visible=False)
     st.plotly_chart(style_fig(fig, 500), width="stretch")
     st.caption("Shaded bands are your four windows. Orange diamonds are statistically "
@@ -344,6 +352,11 @@ def page_options():
     day, win = pick.split(" · ")
     a = ag[(ag.date == day) & (ag.window == win)].copy()
     e = oe[(oe.date == day) & (oe.window == win)]
+    if not e.empty and "fetched_at" in e.columns and e["fetched_at"].notna().any():
+        cap = pd.to_datetime(e["fetched_at"].dropna().iloc[0])
+        st.caption(f"🕐 Chain actually captured at **{cap.strftime('%H:%M %Z')}** — if that's "
+                   "far from the window's nominal time (e.g., the laptop was asleep), read "
+                   "this snapshot as the state at capture time, not at the window.")
     n_und = a["underlying"].nunique()
     if n_und < 20:
         st.info(f"This snapshot covers {n_und} underlying(s) — full-universe capture "
@@ -354,6 +367,8 @@ def page_options():
     if has_oi:
         g = a.sort_values("gex_total")
         fig = go.Figure(go.Bar(x=g["gex_total"], y=g["underlying"], orientation="h",
+                               customdata=g["underlying"].map(name_map()),
+                               hovertemplate="%{y} — %{customdata}<br>GEX %{x:$,.0f}<extra></extra>",
                                marker_color=["#e66767" if v < 0 else "#3987e5"
                                              for v in g["gex_total"]]))
         fig.update_layout(title="Dealer gamma exposure (GEX) — $ per 1% move")
@@ -366,6 +381,8 @@ def page_options():
     sk = a.dropna(subset=["skew_25d"]).sort_values("skew_25d")
     if not sk.empty:
         fig = go.Figure(go.Bar(x=sk["skew_25d"], y=sk["underlying"], orientation="h",
+                               customdata=sk["underlying"].map(name_map()),
+                               hovertemplate="%{y} — %{customdata}<br>skew %{x:.3f}<extra></extra>",
                                marker_color="#9085e9"))
         fig.update_layout(title="25-delta put−call IV skew (fear gauge)")
         c2.plotly_chart(style_fig(fig), width="stretch")
@@ -388,8 +405,8 @@ def page_options():
                      width="stretch", hide_index=True, column_config=col_cfg(blk, extra={
                          "underlying": ("Ticker", "The stock the option is on.")}))
 
-    t = a[["underlying", "spot", "atm_iv", "pc_ratio_traded",
-           "call_prem_at_ask", "put_prem_at_ask"]]
+    t = add_name(a[["underlying", "spot", "atm_iv", "pc_ratio_traded",
+                    "call_prem_at_ask", "put_prem_at_ask"]], after="underlying")
     st.dataframe(t.style.format({"spot": "${:.2f}", "atm_iv": "{:.0%}",
                                  "pc_ratio_traded": "{:.2f}",
                                  "call_prem_at_ask": "${:,.0f}",
@@ -413,10 +430,15 @@ def page_options():
                .rename(columns={"C": "call_buys", "P": "put_buys"}))
     net["total"] = net.sum(axis=1)
     net = net.sort_values("total", ascending=False).head(15)
+    hover = pd.Series(net.index, index=net.index).map(name_map())
     fig = go.Figure()
     fig.add_trace(go.Bar(y=net.index, x=net.get("call_buys", 0), name="Call buying",
+                         customdata=hover,
+                         hovertemplate="%{y} — %{customdata}<br>call buys %{x:$,.0f}<extra></extra>",
                          orientation="h", marker_color="#199e70"))
     fig.add_trace(go.Bar(y=net.index, x=net.get("put_buys", 0), name="Put buying",
+                         customdata=hover,
+                         hovertemplate="%{y} — %{customdata}<br>put buys %{x:$,.0f}<extra></extra>",
                          orientation="h", marker_color="#e66767"))
     fig.update_layout(barmode="stack", title="Aggressive block premium by underlying "
                                              "(buyer-initiated only)")
@@ -466,15 +488,21 @@ def page_models():
         local = pd.to_datetime(ji["ts"]).dt.tz_convert("America/Chicago")
         mins = local.dt.hour * 60 + local.dt.minute
         wmap = pd.Series("outside", index=ji.index)
-        for w, (a, b) in {"W1": (480, 510), "W2": (615, 645),
+        for w, (a, b) in {"W1": (480, 510), "OPEN": (510, 540), "W2": (615, 645),
                           "W3": (870, 900), "W4": (900, 1020)}.items():
             wmap[(mins >= a) & (mins < b)] = w
-        lam = (wmap[wmap != "outside"].value_counts() / ji["date"].nunique()).sort_index()
+        lam_order = [w for w in WINDOW_ORDER if w in set(wmap)]
+        lam = (wmap[wmap != "outside"].value_counts() / ji["date"].nunique())
+        lam = lam.reindex([w for w in lam_order if w in lam.index])
         fig = go.Figure(go.Bar(x=[WINDOW_LABEL[w] for w in lam.index], y=lam.values,
-                               marker_color=SERIES[0],
+                               marker_color=[("#898781" if w in ("W1", "W4") else SERIES[0])
+                                             for w in lam.index],
                                text=[f"{v:.1f}" for v in lam.values], textposition="outside"))
         fig.update_layout(title="Jump events per Friday (all tickers pooled)")
         c1.plotly_chart(style_fig(fig, 380), width="stretch")
+        c1.caption("⚠️ The grey bars (pre-open and after-hours) are inflated: thin "
+                   "books make ordinary bid-ask bounce look like jumps. Trust the "
+                   "regular-session bars; treat the grey ones as an upper bound.")
 
     c2.subheader("Hawkes clustering — next 6 months")
     c2.caption("Big daily moves self-excite: one shock raises the odds of another. "
@@ -490,9 +518,9 @@ def page_models():
     c2.plotly_chart(style_fig(fig, 380), width="stretch")
 
     with st.expander("Full Merton parameter table"):
-        mt = mp[["ticker", "industry", "sigma_ann", "jumps_per_year",
-                 "mu_j", "sigma_j", "jump_var_share"]].sort_values(
-                     "jump_var_share", ascending=False)
+        mt = add_name(mp[["ticker", "industry", "sigma_ann", "jumps_per_year",
+                          "mu_j", "sigma_j", "jump_var_share"]].sort_values(
+                              "jump_var_share", ascending=False))
         st.dataframe(mt.style.format({"sigma_ann": "{:.0%}", "jumps_per_year": "{:.1f}",
                                       "mu_j": "{:+.3f}", "sigma_j": "{:.3f}",
                                       "jump_var_share": "{:.0%}"}),
@@ -549,15 +577,21 @@ def page_scoreboard():
     h = st.radio("Horizon", ["1d", "2w", "1m", "6m", "12m"], horizontal=True,
                  format_func=lambda x: {"1d": "Tomorrow", "2w": "2 weeks", "1m": "1 month",
                                         "6m": "6 months", "12m": "12 months"}[x])
-    c1, c2 = st.columns(2)
+    c1, c2, c3 = st.columns(3)
     only200 = c1.toggle("Only whole shares ≤ $200", value=False,
                         help="With ~$200 you can buy a whole share of these. "
                              "Fractional shares make the rest accessible too.")
-    inds = c2.multiselect("Industries", sorted(sb.industry.unique()), format_func=ind_name)
+    liq = c2.toggle("Hide illiquid (<$1M/day)", value=True,
+                    help="Stocks trading under ~$1M/day have wide bid-ask spreads — "
+                         "a small account loses more to the spread than most weekly "
+                         "moves deliver. On by default for your protection.")
+    inds = c3.multiselect("Industries", sorted(sb.industry.unique()), format_func=ind_name)
 
     d = sb.copy()
     if only200:
         d = d[d.whole_share_200]
+    if liq and "liquid" in d.columns:
+        d = d[d.liquid]
     if inds:
         d = d[d.industry.isin(inds)]
     d = d.sort_values(f"score_{h}", ascending=False)
@@ -597,7 +631,75 @@ def page_scoreboard():
         st.plotly_chart(style_fig(fig, 380), width="stretch")
 
 
-# ================================================================ 8 · institutions
+# ================================================================ 8 · paper portfolio
+def page_paper():
+    st.title("🧾 Paper Portfolio")
+    st.caption("The scoreboard's honest forward test. Every data Friday, the top 10 "
+               "liquid names per horizon are frozen as a paper basket — equal weight, "
+               "assumed filled at that Friday's close, zero costs, never edited "
+               "afterwards. If the scoreboard has real predictive power, these baskets "
+               "beat SPY over time; if they don't, believe the baskets, not the scores. "
+               "No real money is involved.")
+    bk, db = load("paper_baskets"), load("bars_daily")
+    if bk.empty:
+        st.info("No baskets frozen yet — they're created automatically by the data refresh.")
+        return
+    latest_close = db.sort_values("date").groupby("ticker")["c"].last()
+    latest_date = db["date"].max()
+    target_days = {"1d": 1, "2w": 10, "1m": 21, "6m": 126, "12m": 252}
+    hname = {"1d": "Tomorrow", "2w": "2 weeks", "1m": "1 month",
+             "6m": "6 months", "12m": "12 months"}
+
+    summary = []
+    for (as_of, h), g in bk.groupby(["as_of", "horizon"]):
+        rets = latest_close.reindex(g.ticker).values / g.entry_price.values - 1
+        basket = float(pd.Series(rets).mean())
+        spy = float(latest_close["SPY"] / g.spy_entry.iloc[0] - 1)
+        elapsed = max((pd.Timestamp(latest_date) - pd.Timestamp(as_of)).days, 0)
+        summary.append({"as_of": as_of, "horizon": h, "days": elapsed,
+                        "target_days": target_days[h] * 7 // 5,
+                        "basket_ret": basket, "spy_ret": spy,
+                        "excess": basket - spy})
+    sm = pd.DataFrame(summary).sort_values(["as_of", "horizon"])
+    sm["horizon"] = sm["horizon"].map(hname)
+    st.subheader("The record so far")
+    st.dataframe(sm.style.format({"basket_ret": "{:+.2%}", "spy_ret": "{:+.2%}",
+                                  "excess": "{:+.2%}"}),
+                 width="stretch", hide_index=True,
+                 column_config=col_cfg(sm, extra={
+                     "as_of": ("Frozen on", "The Friday whose scoreboard picked this basket."),
+                     "horizon": ("Horizon", "Which scoreboard horizon picked it."),
+                     "days": ("Days elapsed", "Calendar days since the basket was frozen."),
+                     "target_days": ("Days to verdict", "Calendar days until this basket's "
+                                     "horizon is up and its result counts."),
+                     "basket_ret": ("Basket", "Equal-weight return of the 10 names since freezing."),
+                     "spy_ret": ("S&P 500", "SPY's return over the same period."),
+                     "excess": ("Vs S&P", "Basket minus SPY. Positive = the scoreboard added value.")}))
+
+    picks = sorted(bk["as_of"].unique(), reverse=True)
+    c1, c2 = st.columns(2)
+    sel_date = c1.selectbox("Basket date", picks)
+    sel_h = c2.selectbox("Horizon", [h for h in target_days if
+                                     ((bk.as_of == sel_date) & (bk.horizon == h)).any()],
+                         format_func=lambda x: hname[x])
+    g = bk[(bk.as_of == sel_date) & (bk.horizon == sel_h)].copy()
+    g["latest"] = latest_close.reindex(g.ticker).values
+    g["ret"] = g["latest"] / g["entry_price"] - 1
+    hold = add_name(g[["ticker", "entry_price", "latest", "ret", "score"]]
+                    .sort_values("ret", ascending=False))
+    st.dataframe(hold.style.format({"entry_price": "${:.2f}", "latest": "${:.2f}",
+                                    "ret": "{:+.2%}", "score": "{:+.2f}"}),
+                 width="stretch", hide_index=True,
+                 column_config=col_cfg(hold, extra={
+                     "entry_price": ("Entry", "Close price on the Friday the basket was frozen."),
+                     "latest": ("Latest", f"Most recent close ({latest_date})."),
+                     "ret": ("Return", "Change since the basket was frozen.")}))
+    st.caption("Fills are assumed at the freezing Friday's close with zero costs — "
+               "real-world results would be slightly worse. Judge each basket only "
+               "after its horizon is up.")
+
+
+# ================================================================ 9 · institutions
 def page_institutions():
     st.title("🏛️ Institutions & Insiders")
     inst, ins = load("inst_13f"), load("insiders")
@@ -732,6 +834,7 @@ pages = st.navigation([
     st.Page(page_models, title="Models Lab", icon="🧪"),
     st.Page(page_sentiment, title="Sentiment & Events", icon="📰"),
     st.Page(page_scoreboard, title="Scoreboard", icon="🏆"),
+    st.Page(page_paper, title="Paper Portfolio", icon="🧾"),
     st.Page(page_institutions, title="Institutions & Insiders", icon="🏛️"),
     st.Page(page_lipstick, title="Lipstick Index", icon="💄"),
 ])

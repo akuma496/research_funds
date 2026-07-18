@@ -83,13 +83,13 @@ def api_get(url: str, headers: dict):
             raise
 
 
-def fetch_bars(symbols, timeframe, start, end, headers) -> dict:
+def fetch_bars(symbols, timeframe, start, end, headers, adjustment="split") -> dict:
     """Fetch bars for many symbols over a range, following pagination.
     Returns {symbol: [bars...]}."""
     merged, token, pages = {}, None, 0
     params = {"symbols": ",".join(symbols), "timeframe": timeframe,
               "start": start, "end": end, "limit": str(PAGE_LIMIT),
-              "adjustment": "split", "feed": "sip", "sort": "asc"}
+              "adjustment": adjustment, "feed": "sip", "sort": "asc"}
     while True:
         if token:
             params["page_token"] = token
@@ -163,7 +163,10 @@ def main():
     end = (date.today() if args.include_today
            else date.today() - timedelta(days=1)).isoformat()
     try:
-        bars = fetch_bars(symbols, "1Day", f"{start}T00:00:00Z", f"{end}T23:59:00Z", headers)
+        # daily bars are dividend+split adjusted so momentum/alpha reflect total
+        # return; minute bars stay split-only (within-day metrics are unaffected)
+        bars = fetch_bars(symbols, "1Day", f"{start}T00:00:00Z", f"{end}T23:59:00Z",
+                          headers, adjustment="all")
         n = sum(len(v) for v in bars.values())
         with gzip.open(out, "wt") as f:
             json.dump({"start": start, "end": end, "timeframe": "1Day",

@@ -60,6 +60,10 @@ def main():
         sent = {k: v.get("score", 0.0) for k, v in raw.get("industries", {}).items()}
     df["sentiment_raw"] = df["industry"].map(sent).fillna(0.0)
 
+    if "data_artifact" in df.columns and df["data_artifact"].any():
+        bad = df.loc[df.data_artifact, "ticker"].tolist()
+        print(f"excluded from ranking (corporate-action artifact in returns): {bad}")
+        df = df[~df.data_artifact]
     ranked = df[df.industry != "benchmark"].copy()
     feats = pd.DataFrame({
         "mom_1w": zscore(ranked.mom_1w), "mom_1m": zscore(ranked.mom_1m),
@@ -81,7 +85,11 @@ def main():
         ranked[f"score_{h}"] = sc
         ranked[f"rank_{h}"] = sc.rank(ascending=False).astype(int)
 
-    keep = (["ticker", "industry", "price", "whole_share_200", "sentiment_raw",
+    # liquidity gate: a $200 account loses more to spread than to being wrong
+    # in names trading under ~$1M/day — flag them so the UI can hide by default
+    ranked["liquid"] = ranked["dollar_vol_21d"] >= 1_000_000
+
+    keep = (["ticker", "industry", "price", "whole_share_200", "liquid", "sentiment_raw",
              "mom_1w", "mom_1m", "mom_3m", "mom_6m", "mom_12m1m", "alpha_ann", "beta",
              "rsi14", "vol_ann", "dist_52w_high", "jump_var_share", "jumps_per_year",
              "p_cluster_6m", "micro_alpha_w3", "volz_w3", "dollar_vol_21d"]

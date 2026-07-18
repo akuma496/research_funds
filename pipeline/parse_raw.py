@@ -28,6 +28,25 @@ STORE = ROOT / "data" / "store"
 OCC_RE = re.compile(r"^([A-Z.]+)(\d{6})([CP])(\d{8})$")
 
 
+def load_overrides() -> dict:
+    """ticker -> valid_from date string. Bars before valid_from are dropped —
+    used when a ticker is recycled to a different security (e.g. LAZR)."""
+    f = ROOT / "data" / "ticker_overrides.csv"
+    if not f.exists():
+        return {}
+    df = pd.read_csv(f)
+    return dict(zip(df["ticker"], df["valid_from"]))
+
+
+def apply_overrides(df: pd.DataFrame, date_col: str) -> pd.DataFrame:
+    for t, valid_from in load_overrides().items():
+        drop = (df["ticker"] == t) & (df[date_col].astype(str) < valid_from)
+        if drop.any():
+            print(f"  overrides: dropped {drop.sum():,} {t} rows before {valid_from}")
+            df = df[~drop]
+    return df
+
+
 def parse_minute_bars() -> pd.DataFrame:
     frames = []
     for f in sorted((RAW / "equity" / "minute").glob("*.json.gz")):
@@ -90,11 +109,11 @@ def main():
     uni = pd.read_csv(ROOT / "data" / "universe.csv")
     uni.to_parquet(STORE / "universe.parquet", index=False)
 
-    mb = parse_minute_bars()
+    mb = apply_overrides(parse_minute_bars(), "date")
     mb.to_parquet(STORE / "bars_minute.parquet", index=False)
     print(f"bars_minute: {len(mb):,} rows, {mb['date'].nunique()} Fridays, {mb['ticker'].nunique()} tickers")
 
-    db = parse_daily_bars()
+    db = apply_overrides(parse_daily_bars(), "date")
     db.to_parquet(STORE / "bars_daily.parquet", index=False)
     print(f"bars_daily:  {len(db):,} rows, {db['ticker'].nunique()} tickers")
 

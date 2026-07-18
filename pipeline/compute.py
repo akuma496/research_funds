@@ -26,6 +26,7 @@ STORE = ROOT / "data" / "store"
 
 WINDOWS = {  # local America/Chicago [start, end) in minutes-from-midnight
     "W1": (8 * 60, 8 * 60 + 30),
+    "OPEN": (8 * 60 + 30, 9 * 60),      # first half hour of the regular session
     "W2": (10 * 60 + 15, 10 * 60 + 45),
     "W3": (14 * 60 + 30, 15 * 60),
     "W4": (15 * 60, 17 * 60),
@@ -62,8 +63,17 @@ def window_metrics(mb: pd.DataFrame) -> pd.DataFrame:
 
     wm = (mb.groupby(["ticker", "date", "window"]).apply(agg, include_groups=False)
             .reset_index())
-    # relative volume + z-score vs same ticker/window across all Fridays
-    grp = wm.groupby(["ticker", "window"])["volume"]
+
+    # relative volume + z-score vs the same ticker/window on the same KIND of
+    # Friday — expiration Fridays (monthly OPEX / quad witching) run structurally
+    # hotter, so pooling them with regular Fridays biases both baselines
+    def friday_type(d: str) -> str:
+        dt = pd.Timestamp(d)
+        third = 15 + (4 - pd.Timestamp(dt.year, dt.month, 15).weekday()) % 7
+        return "expiration" if dt.day == third else "regular"
+
+    wm["ftype"] = wm["date"].map(friday_type)
+    grp = wm.groupby(["ticker", "window", "ftype"])["volume"]
     wm["rvol"] = wm["volume"] / grp.transform("mean")
     sd = grp.transform("std")
     wm["vol_z"] = (wm["volume"] - grp.transform("mean")) / sd.replace(0, np.nan)
@@ -87,8 +97,8 @@ def daily_features(db: pd.DataFrame, wm: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for t in px.columns:
         s = px[t].dropna()
-        if len(s) < 70:
-            continue
+        if len(s) < 5:  # even young listings (recycled tickers, IPOs) get a row;
+            continue    # short-history features simply come out NaN
         r = rets[t].dropna()
         last = s.iloc[-1]
         def mom(days):
@@ -111,6 +121,9 @@ def daily_features(db: pd.DataFrame, wm: pd.DataFrame) -> pd.DataFrame:
             "dollar_vol_21d": float((db[db.ticker == t].tail(21)["c"]
                                      * db[db.ticker == t].tail(21)["v"]).mean()),
             "whole_share_200": bool(last <= 200),
+            # a single day beyond +/-200% is a corporate action (reverse split,
+            # ticker recycling), not a return — flag so rankings can exclude it
+            "data_artifact": bool(r.abs().max() > 2.0) if len(r) else False,
         })
     df = pd.DataFrame(rows)
 
