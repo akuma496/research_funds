@@ -149,6 +149,36 @@ COLUMN_HELP = {
     "chg": ("Change QoQ", "Panel holdings: latest quarter vs prior quarter."),
     "micro_alpha_w3": ("Power-hour alpha", "Last Friday's power-hour return beyond what the "
                        "market's move explains."),
+    "px": ("Price", "Current share price."),
+    "tier": ("Price tier", "Price bucket: sub-$20 / $80 / $100 / $150 / $200 / above."),
+    "cash": ("Cash reserves", "Cash & equivalents from the company's latest SEC filing."),
+    "drift_ann": ("Drift /yr", "The price's own annualized direction of travel over "
+                  "6 months, regardless of the market."),
+    "mr_z": ("Mismatch (σ)", "How stretched price is vs its own 50-day average, in "
+             "standard deviations. Beyond ±2 is a big rubber band."),
+    "mismatch_pct": ("Mismatch %", "Price vs its 50-day average in percent."),
+    "half_life_d": ("Half-life (d)", "How many days it historically takes for half of a "
+                    "stretch to snap back. Short = fast mean-reverter."),
+    "short_pct_float": ("Short % float", "Share of freely-trading shares sold short. "
+                        "Above ~15% is crowded; above 25% is squeeze fuel."),
+    "days_to_cover": ("Days to cover", "Days of normal volume shorts would need to buy "
+                      "back. Higher = more explosive if forced."),
+    "squeeze_pctl": ("Squeeze rank", "Relative squeeze-setup rank, 0–100 percentile. "
+                     "A ranking, not a calibrated probability."),
+    "meanrev_pctl": ("Reversion rank", "Relative mean-reversion-setup rank, 0–100."),
+    "meanrev_direction": ("Direction", "Which way the snap-back would go from here."),
+    "sideways_pctl": ("Sideways rank", "Relative range-bound likelihood rank, 0–100."),
+    "blackswan_pctl": ("Tail-risk rank", "Relative exposure to violent gaps, 0–100. "
+                       "This ranks exposure — no one can predict the swan itself."),
+    "sep_p50": ("Sept target", "Model median price for 2026-09-30 (2,000 simulated "
+                "paths from this stock's own jump-diffusion). Wide bands are honest."),
+    "dec_p50": ("Dec target", "Model median price for 2026-12-31."),
+    "analyst_mean": ("Street target", "Wall Street analysts' mean 12-month price target."),
+    "etf_top10_count": ("In ETFs", "How many of our tracked ETFs hold it in their "
+                        "top-10 holdings (free data floor, not a full count)."),
+    "weight": ("Weight", "Share of the portfolio's money in this name (inverse to its "
+               "volatility, so risky names get less)."),
+    "label": ("Basket day", "Which day picked the basket; expiration Fridays tagged."),
     "volz_w3": ("Power-hour vol z", "Volume surprise in last Friday's power hour."),
     "dollar_vol_21d": ("$ volume /day", "Average daily dollars traded (21 days) — liquidity."),
 }
@@ -175,10 +205,29 @@ def t_label(t: str) -> str:
     return f"{t} — {n}" if n and n != t else t
 
 
+@st.cache_data(ttl=600)
+def price_map() -> dict:
+    df = load("daily_features")
+    if df.empty:
+        return {}
+    return dict(zip(df["ticker"], df["price"]))
+
+
 def add_name(df: pd.DataFrame, after: str = "ticker") -> pd.DataFrame:
+    """Company name + current share price beside every ticker column."""
     df = df.copy()
     df.insert(df.columns.get_loc(after) + 1, "company", df[after].map(name_map()))
+    if "price" not in df.columns and "px" not in df.columns:
+        df.insert(df.columns.get_loc("company") + 1, "px",
+                  df[after].map(price_map()))
     return df
+
+
+def analyst(lines: list):
+    """Auto-generated analyst read — data-driven sentences, no chatter."""
+    lines = [l for l in lines if l]
+    if lines:
+        st.info("🧑‍💼 **Analyst read**\n\n" + "\n".join(f"- {l}" for l in lines))
 
 
 def friday_tag(d: str) -> str:
@@ -236,6 +285,28 @@ def page_command_center():
     st.plotly_chart(style_fig(fig, 560), width="stretch")
     st.caption("Each cell is the median across the industry's tickers. "
                "Times are US Central. Diverging colors: red = down/below normal, blue = up/above.")
+
+    # data-driven analyst summary of the selected Friday
+    w3 = d[d.window == "W3"]
+    if not w3.empty:
+        by_ind = w3.groupby("industry")["ret"].median().sort_values()
+        breadth = (by_ind > 0).mean()
+        mover = d.reindex(d["ret"].abs().sort_values(ascending=False).index).iloc[0]
+        hot = d[d.vol_z > 2]
+        analyst([
+            f"Power hour: {ind_name(by_ind.index[-1])} led ({by_ind.iloc[-1]:+.2%} median), "
+            f"{ind_name(by_ind.index[0])} lagged ({by_ind.iloc[0]:+.2%}); "
+            f"{breadth:.0%} of industries closed the window positive — "
+            + ("broad risk-on." if breadth > 0.65 else
+               "broad risk-off." if breadth < 0.35 else "a mixed, stock-picker's tape."),
+            f"Biggest single move: {t_label(mover.ticker)} {mover.ret:+.1%} in the "
+            f"{WINDOW_LABEL.get(mover.window, mover.window).split('·')[-1].strip()} window "
+            f"on {mover.rvol:.1f}× normal volume.",
+            f"{len(hot)} ticker-windows ran >2σ volume vs their normal for this kind of "
+            f"Friday — " + ("unusual participation; someone repositioned."
+                            if len(hot) > 25 else "participation was ordinary."),
+            (f"This was an expiration Friday — open/close flow reflects options "
+             f"rebalancing, so fade the noise in W1/W3." if tag else None)])
 
     st.subheader("Biggest single-stock moves that day")
     top = d.reindex(d["ret"].abs().sort_values(ascending=False).index)[
@@ -337,6 +408,51 @@ def page_ticker():
                                    "vol_z": "{:+.1f}σ", "rv": "{:.3%}", "vwap_dev": "{:+.2%}"}),
                  width="stretch", hide_index=True, column_config=col_cfg(wmt))
 
+    # ---- quant panel: drift vs alpha vs mismatch + price targets ----
+    q, tg = load("quant_signals"), load("price_targets")
+    qt = q[q.ticker == tick]
+    if not qt.empty:
+        r = qt.iloc[0]
+        st.subheader("Quant read")
+        c = st.columns(5)
+        c[0].metric("Drift /yr", f"{r.drift_ann:+.0%}",
+                    help=COLUMN_HELP["drift_ann"][1])
+        c[1].metric("Alpha /yr", f"{r.alpha_ann:+.0%}" if pd.notna(r.alpha_ann) else "—",
+                    help=COLUMN_HELP["alpha_ann"][1])
+        c[2].metric("Mismatch", f"{r.mr_z:+.1f}σ" if pd.notna(r.mr_z) else "—",
+                    help=COLUMN_HELP["mr_z"][1])
+        c[3].metric("Half-life", f"{r.half_life_d:.0f}d" if pd.notna(r.half_life_d) else "—",
+                    help=COLUMN_HELP["half_life_d"][1])
+        c[4].metric("Price tier", r.tier, help=COLUMN_HELP["tier"][1])
+        drift_vs_alpha = ("its own drift and its market-adjusted alpha agree — the move "
+                          "is genuinely its own" if pd.notna(r.alpha_ann)
+                          and np.sign(r.drift_ann) == np.sign(r.alpha_ann)
+                          else "drift and alpha disagree — the raw trend is mostly a "
+                               "market/beta effect, not stock-specific strength")
+        stretch = (f"price sits {r.mr_z:+.1f}σ from its 50-day average "
+                   f"({r.mismatch_pct:+.1%}), and historically half of such a stretch "
+                   f"decays in ~{r.half_life_d:.0f} days"
+                   if pd.notna(r.mr_z) and pd.notna(r.half_life_d) else None)
+        analyst([f"{t_label(tick)}: drift {r.drift_ann:+.0%}/yr vs alpha "
+                 f"{(r.alpha_ann if pd.notna(r.alpha_ann) else 0):+.0%}/yr — {drift_vs_alpha}.",
+                 stretch])
+    tgt = tg[tg.ticker == tick] if not tg.empty else pd.DataFrame()
+    if not tgt.empty:
+        st.subheader("Model price targets (2,000 simulated paths)")
+        cols = st.columns(len(tgt))
+        for col, (_, row) in zip(cols, tgt.iterrows()):
+            when = "End of Sept" if "09-30" in row.target_date else "End of Dec"
+            col.metric(f"{when} 2026", f"${row.p50:,.2f}",
+                       help=f"Median of 2,000 jump-diffusion paths. 80% of paths "
+                            f"ended between ${row.p10:,.2f} and ${row.p90:,.2f} — "
+                            f"that width is the honest uncertainty.")
+            col.caption(f"80% band: ${row.p10:,.2f}–${row.p90:,.2f}"
+                        + (f" · Street: ${row.analyst_mean:,.2f}"
+                           if pd.notna(row.analyst_mean) else ""))
+        st.caption("Model targets come from each stock's own volatility and jump "
+                   "behavior — they say what's *typical* for this stock, not what "
+                   "news will happen. The Street number is analysts' 12-month view.")
+
 
 # ================================================================ 4 · options flow
 def page_options():
@@ -425,6 +541,20 @@ def page_options():
     st.caption(f"{len(tp):,} block prints (≥50 contracts or ≥$25k premium) from "
                f"{tape[tape.date == day].shape[0]:,} sizeable prints collected for {day}. "
                "Side: quote rule first, tick rule fallback.")
+    buys_all = tp[tp.side.str.startswith("buy")]
+    cb = buys_all.loc[buys_all.cp == "C", "premium"].sum()
+    pb = buys_all.loc[buys_all.cp == "P", "premium"].sum()
+    if cb + pb > 0:
+        top_und = buys_all.groupby("underlying")["premium"].sum().idxmax()
+        analyst([
+            f"Aggressive block flow: ${cb / 1e6:,.0f}M into calls vs "
+            f"${pb / 1e6:,.0f}M into puts ({cb / (cb + pb):.0%} calls) — "
+            + ("buyers leaned bullish." if cb > 1.5 * pb else
+               "buyers leaned defensive." if pb > 1.5 * cb else
+               "no clear directional lean."),
+            f"Heaviest aggressive interest: {t_label(top_und)}.",
+            "Caveat: spread legs aren't filtered out yet, so read this as where the "
+            "action is, not a pure directional bet."])
     buys = tp[tp.side.str.startswith("buy")]
     net = (buys.groupby(["underlying", "cp"])["premium"].sum().unstack(fill_value=0)
                .rename(columns={"C": "call_buys", "P": "put_buys"}))
@@ -504,18 +634,45 @@ def page_models():
                    "books make ordinary bid-ask bounce look like jumps. Trust the "
                    "regular-session bars; treat the grey ones as an upper bound.")
 
-    c2.subheader("Hawkes clustering — next 6 months")
+    c2.subheader("Hawkes clustering — 1 to 6 months")
     c2.caption("Big daily moves self-excite: one shock raises the odds of another. "
-               "P(cluster) = probability of ≥3 industry-wide shock days within any "
-               "10-day stretch in the next 6 months (simulated).")
+               "Each line: probability of a shock cluster (≥3 industry-wide shock "
+               "days within 10 days) by horizon. Steep early rise = danger is near-term.")
     h = hk[hk.industry != "benchmark"].sort_values("p_cluster_6m", ascending=False)
-    fig = go.Figure(go.Bar(x=h["p_cluster_6m"], y=h["industry"].map(ind_name),
-                           orientation="h", marker_color=SERIES[5],
-                           text=[f"{v:.0%}" for v in h["p_cluster_6m"]],
-                           textposition="outside"))
-    fig.update_layout(title="P(shock cluster within 6 months)", xaxis_tickformat=".0%",
-                      xaxis_range=[0, 1.15])
+    hcols = [c for c in ["p_cluster_1m", "p_cluster_2m", "p_cluster_3m",
+                         "p_cluster_4m", "p_cluster_5m", "p_cluster_6m"]
+             if c in h.columns]
+    fig = go.Figure()
+    for i, (_, r) in enumerate(h.head(6).iterrows()):
+        fig.add_trace(go.Scatter(x=[c.split("_")[-1] for c in hcols],
+                                 y=[r[c] for c in hcols], name=ind_name(r.industry),
+                                 mode="lines+markers",
+                                 line=dict(width=2, color=SERIES[i % len(SERIES)])))
+    fig.update_layout(title="P(shock cluster) by horizon — 6 riskiest industries",
+                      yaxis_tickformat=".0%")
     c2.plotly_chart(style_fig(fig, 380), width="stretch")
+
+    hh = load("hawkes_history")
+    st.subheader("How cluster risk is moving over time")
+    if not hh.empty and hh["as_of"].nunique() > 1:
+        snaps = sorted(hh["as_of"].unique())
+        piv = hh.pivot_table(index="industry", columns="as_of",
+                             values="p_cluster_6m")
+        chg = (piv[snaps[-1]] - piv[snaps[0]]).dropna().sort_values()
+        fig = go.Figure(go.Bar(x=chg.values, y=[ind_name(i) for i in chg.index],
+                               orientation="h",
+                               marker_color=["#199e70" if v < 0 else "#e66767"
+                                             for v in chg.values],
+                               text=[f"{v:+.0%}" for v in chg.values],
+                               textposition="outside"))
+        fig.update_layout(title=f"6-month cluster risk: change from {snaps[0]} to {snaps[-1]}",
+                          xaxis_tickformat=".0%")
+        st.plotly_chart(style_fig(fig, 420), width="stretch")
+        st.caption("Green = risk cooling since the first snapshot; red = heating. "
+                   "A new snapshot is stored at every data refresh.")
+    else:
+        st.caption("Only one snapshot recorded so far — this comparison fills in "
+                   "automatically as refreshes accumulate.")
 
     with st.expander("Full Merton parameter table"):
         mt = add_name(mp[["ticker", "industry", "sigma_ann", "jumps_per_year",
@@ -552,11 +709,38 @@ def page_sentiment():
 
     for k in sorted(inds, key=lambda k: -inds[k].get("score", 0)):
         v = inds[k]
-        with st.expander(f"{ind_name(k)} — {v.get('score', 0):+.1f}"):
-            st.write(v.get("summary", ""))
+        verdict = v.get("verdict") or v.get("summary", "")
+        with st.expander(f"{ind_name(k)}  {v.get('score', 0):+.1f} — {verdict[:80]}"):
+            st.markdown(f"**Verdict:** {verdict}")
+            if v.get("drivers"):
+                st.markdown("**Why:**\n" + "\n".join(f"- {x}" for x in v["drivers"]))
+            if v.get("risks"):
+                st.markdown("**What breaks it:**\n"
+                            + "\n".join(f"- {x}" for x in v["risks"]))
+            if v.get("watch"):
+                st.markdown("**Watch:**\n" + "\n".join(f"- 📅 {x}" for x in v["watch"]))
+            if v.get("action"):
+                st.markdown(f"**So what:** *{v['action']}*")
+            elif v.get("summary") and not v.get("verdict"):
+                st.write(v["summary"])
             for c in v.get("citations", []):
                 st.markdown(f"- [{c.get('title', 'source')}]({c.get('url', '')}) — "
                             f"{c.get('source', '')}, {c.get('date', '')}")
+
+    fund = load("fundamentals")
+    if not fund.empty and fund["etf_top10_count"].max() > 0:
+        st.subheader("ETF ownership — who's in the big funds")
+        st.caption("How many of our tracked ETFs (SPY, QQQ, SMH, sector and thematic "
+                   "funds) hold each stock among their TOP-10 holdings. Free data only "
+                   "exposes top holdings, so this is a floor — inclusion in a fund's "
+                   "top 10 means passive money buys it automatically on every inflow.")
+        em = fund[fund.etf_top10_count > 0].sort_values("etf_top10_count",
+                                                        ascending=False)
+        em = add_name(em[["ticker", "etf_top10_count", "etf_top10_list"]])
+        st.dataframe(em, width="stretch", hide_index=True,
+                     column_config=col_cfg(em, extra={
+                         "etf_top10_list": ("Which ETFs", "The tracked ETFs holding it "
+                                            "in their top 10.")}))
 
     st.subheader("Scheduled events — next two weeks")
     for ev in data.get("next_week_outlook", []):
@@ -588,6 +772,15 @@ def page_scoreboard():
     inds = c3.multiselect("Industries", sorted(sb.industry.unique()), format_func=ind_name)
 
     d = sb.copy()
+    q, tg, fund = load("quant_signals"), load("price_targets"), load("fundamentals")
+    if not q.empty:
+        d = d.merge(q[["ticker", "tier"]], on="ticker", how="left")
+    if not fund.empty:
+        d = d.merge(fund[["ticker", "cash"]], on="ticker", how="left")
+    if not tg.empty:
+        piv = tg.pivot(index="ticker", columns="target_date", values="p50")
+        ren = {c: ("sep_p50" if "09-30" in c else "dec_p50") for c in piv.columns}
+        d = d.merge(piv.rename(columns=ren).reset_index(), on="ticker", how="left")
     if only200:
         d = d[d.whole_share_200]
     if liq and "liquid" in d.columns:
@@ -596,17 +789,32 @@ def page_scoreboard():
         d = d[d.industry.isin(inds)]
     d = d.sort_values(f"score_{h}", ascending=False)
 
-    top = d.head(20)[["ticker", "industry", "price", f"score_{h}", "mom_1m", "mom_6m",
-                      "alpha_ann", "vol_ann", "jump_var_share", "p_cluster_6m",
-                      "sentiment_raw", "whole_share_200"]]
+    top3 = d.head(3)
+    analyst([
+        f"Top of this board: " + ", ".join(
+            f"{t_label(r.ticker)} ({r[f'score_{h}']:+.2f})" for _, r in top3.iterrows()) + ".",
+        f"What's driving them: median 1-month momentum {top3.mom_1m.median():+.1%}, "
+        f"median alpha {top3.alpha_ann.median():+.1%}/yr, sentiment "
+        f"{top3.sentiment_raw.median():+.1f} — "
+        + ("trend and narrative agree." if top3.sentiment_raw.median() > 0
+           else "the tape is ahead of the narrative; that divergence is the risk."),
+        "Scores are relative evidence, not probabilities of profit — cross-check the "
+        "same names on the Screens page for their risk setups."])
+
+    show_cols = ["ticker", "industry", "price", "tier", "cash", f"score_{h}",
+                 "sep_p50", "dec_p50", "mom_1m", "mom_6m", "alpha_ann", "vol_ann",
+                 "jump_var_share", "sentiment_raw", "whole_share_200"]
+    top = d.head(20)[[c for c in show_cols if c in d.columns]]
     top = add_name(top)
     top = top.rename(columns={f"score_{h}": "score", "sentiment_raw": "sentiment",
                               "whole_share_200": "≤$200"})
     top["industry"] = top["industry"].map(ind_name)
     st.dataframe(top.style.format({"price": "${:.2f}", "score": "{:+.2f}",
+                                   "cash": "${:,.0f}", "sep_p50": "${:,.2f}",
+                                   "dec_p50": "${:,.2f}",
                                    "mom_1m": "{:+.1%}", "mom_6m": "{:+.1%}",
                                    "alpha_ann": "{:+.1%}", "vol_ann": "{:.0%}",
-                                   "jump_var_share": "{:.0%}", "p_cluster_6m": "{:.0%}",
+                                   "jump_var_share": "{:.0%}",
                                    "sentiment": "{:+.1f}"}),
                  width="stretch", hide_index=True, column_config=col_cfg(top))
     st.caption("Score = weighted blend of momentum, alpha vs S&P, jump risk, event-cluster "
@@ -631,6 +839,140 @@ def page_scoreboard():
         st.plotly_chart(style_fig(fig, 380), width="stretch")
 
 
+# ================================================================ screens
+def page_screens():
+    st.title("🔍 Screens")
+    q = load("quant_signals")
+    if q.empty:
+        st.info("Run the data refresh to build the screens.")
+        return
+    st.caption("Four setups, top 25 each, refreshed with the data and rolling "
+               "roughly a week to a month forward. Ranks are relative percentiles "
+               "across the universe — a 95 means 'better setup than 95% of our "
+               "stocks', not '95% chance it happens'. Statistical screens, not advice.")
+
+    fmt_money = lambda v: f"${v / 1e9:.1f}B" if pd.notna(v) and v >= 1e9 else (
+        f"${v / 1e6:.0f}M" if pd.notna(v) else "—")
+    tabs = st.tabs(["🚀 Short squeeze", "🪃 Mean reversal", "😴 Sideways", "🦢 Black swan"])
+
+    with tabs[0]:
+        d = q[q.squeeze_top25].sort_values("squeeze_score", ascending=False)
+        top = d.iloc[0] if len(d) else None
+        analyst([
+            f"Most crowded setup: {t_label(top.ticker)} — {top.short_pct_float:.0%} of "
+            f"float short, {top.days_to_cover:.1f} days to cover, and a "
+            f"{top.mom_1w:+.1%} week that pressures shorts." if top is not None else None,
+            f"{(d.short_pct_float > 0.20).sum()} of the 25 carry >20% of float short — "
+            "genuine squeeze fuel; the rest are moderate.",
+            "A squeeze needs a spark (news, earnings, forced covering) — this screen "
+            "finds the dry tinder, not the match."])
+        show = add_name(d[["ticker", "short_pct_float", "days_to_cover", "mom_1w",
+                           "squeeze_pctl"]])
+        st.dataframe(show.style.format({"short_pct_float": "{:.1%}",
+                                        "days_to_cover": "{:.1f}", "mom_1w": "{:+.1%}",
+                                        "px": "${:.2f}", "squeeze_pctl": "{:.0f}"}),
+                     width="stretch", hide_index=True, column_config=col_cfg(show))
+
+    with tabs[1]:
+        d = q[q.meanrev_top25].sort_values("meanrev_score", ascending=False)
+        ups = (d.meanrev_direction == "reverts UP").sum()
+        analyst([
+            f"{ups} of 25 are stretched BELOW their average (snap-back would be up); "
+            f"{25 - ups} are stretched above (snap-back would be down).",
+            f"Fastest spring: {t_label(d.iloc[0].ticker)} — {d.iloc[0].mr_z:+.1f}σ from "
+            f"its 50-day mean with a {d.iloc[0].half_life_d:.0f}-day half-life."
+            if len(d) else None])
+        show = add_name(d[["ticker", "mr_z", "mismatch_pct", "half_life_d", "rsi14",
+                           "meanrev_direction", "meanrev_pctl"]])
+        st.dataframe(show.style.format({"mr_z": "{:+.1f}", "mismatch_pct": "{:+.1%}",
+                                        "half_life_d": "{:.0f}", "rsi14": "{:.0f}",
+                                        "px": "${:.2f}", "meanrev_pctl": "{:.0f}"}),
+                     width="stretch", hide_index=True, column_config=col_cfg(show))
+
+    with tabs[2]:
+        d = q[q.sideways_top25].sort_values("sideways_score", ascending=False)
+        analyst([
+            f"These 25 combine the lowest volatility, flattest drift, and tightest "
+            f"20-day ranges — median annualized vol {d.vol_ann.median():.0%} vs "
+            f"{q.vol_ann.median():.0%} for the whole universe.",
+            "Sideways names are premium-selling and patience territory, not "
+            "breakout territory."])
+        show = add_name(d[["ticker", "vol_ann", "drift_ann", "range20_pct",
+                           "sideways_pctl"]])
+        st.dataframe(show.style.format({"vol_ann": "{:.0%}", "drift_ann": "{:+.1%}",
+                                        "range20_pct": "{:.1%}", "px": "${:.2f}",
+                                        "sideways_pctl": "{:.0f}"}),
+                     width="stretch", hide_index=True, column_config=col_cfg(show))
+
+    with tabs[3]:
+        d = q[q.blackswan_top25].sort_values("blackswan_score", ascending=False)
+        analyst([
+            f"Highest tail exposure: {t_label(d.iloc[0].ticker)} — "
+            f"{d.iloc[0].jump_var_share:.0%} of its risk arrives as jumps."
+            if len(d) else None,
+            "This ranks EXPOSURE to violent gaps (both directions), built from jump "
+            "share, jump size, and fat tails. Nobody can predict the swan itself — "
+            "size positions in these names as if the gap will happen to you.",
+            f"Median cash reserve among the 25: {fmt_money(d.get('cash', pd.Series(dtype=float)).median())} — "
+            "cash is the survival buffer if a swan lands."])
+        cols = ["ticker", "jump_var_share", "sigma_j", "kurtosis", "vol_ann",
+                "blackswan_pctl"] + (["cash"] if "cash" in d.columns else [])
+        show = add_name(d[cols])
+        st.dataframe(show.style.format({"jump_var_share": "{:.0%}", "sigma_j": "{:.3f}",
+                                        "kurtosis": "{:.1f}", "vol_ann": "{:.0%}",
+                                        "px": "${:.2f}", "blackswan_pctl": "{:.0f}",
+                                        "cash": "${:,.0f}"}),
+                     width="stretch", hide_index=True, column_config=col_cfg(show))
+
+
+# ================================================================ portfolio 25
+def page_p25():
+    st.title("🎛️ Portfolio 25")
+    port, curve = load("portfolio25"), load("portfolio25_curve")
+    stats_f = STORE / "portfolio25_stats.json"
+    if port.empty or not stats_f.exists():
+        st.info("Run the data refresh to build Portfolio 25.")
+        return
+    s = json.loads(stats_f.read_text())
+    st.caption("The 25 highest-composite-score liquid names (max 3 per industry), "
+               "weighted inversely to volatility and scaled so the whole basket "
+               "targets ~15% annual volatility — the risk calibration that maximizes "
+               "the historical share of profitable periods. Paper only. Nothing makes "
+               "profit certain: the drawdown number below is this portfolio's own history "
+               "saying so.")
+    analyst([
+        f"Backtest (2 years, weekly): {s['pct_positive_weeks']:.0%} of weeks positive, "
+        f"{s['pct_beat_spy_weeks']:.0%} beat the S&P; worst peak-to-trough "
+        f"{s['max_drawdown']:.0%}.",
+        f"Regression vs S&P: beta {s['beta']:.2f} (t={s['beta_t']:.1f}), annualized "
+        f"alpha {s['alpha_ann']:+.1%} (t={s['alpha_t']:.1f}), R² {s['r_squared']:.2f}. "
+        + ("Alpha is statistically meaningful." if abs(s.get("alpha_t") or 0) > 2
+           else "Alpha is NOT statistically significant — treat it as noise until "
+                "the forward test confirms it."),
+        f"Risk calibration: {1 - s['cash_weight']:.0%} invested / "
+        f"{s['cash_weight']:.0%} cash to hit the {s['vol_target']:.0%} vol target.",
+        "⚠️ This basket was selected with today's information, so the backtest "
+        "flatters it (look-ahead bias). The Paper Portfolio page is the honest test."])
+
+    if not curve.empty:
+        c = curve.copy()
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=c["date"], y=c["portfolio"] * 100, name="Portfolio 25",
+                                 line=dict(width=2.5, color=SERIES[0])))
+        fig.add_trace(go.Scatter(x=c["date"], y=c["spy"] * 100, name="S&P 500",
+                                 line=dict(width=2.5, color=SERIES[5])))
+        fig.update_layout(title="Growth of 100 — weekly, 2 years (look-ahead backtest)")
+        st.plotly_chart(style_fig(fig), width="stretch")
+
+    hold = add_name(port.sort_values("weight", ascending=False))
+    hold["industry"] = hold["industry"].map(ind_name)
+    st.dataframe(hold.style.format({"price": "${:.2f}", "weight": "{:.1%}",
+                                    "blend": "{:+.2f}", "score_1m": "{:+.2f}",
+                                    "score_6m": "{:+.2f}", "vol_ann": "{:.0%}",
+                                    "alpha_ann": "{:+.1%}"}),
+                 width="stretch", hide_index=True, column_config=col_cfg(hold))
+
+
 # ================================================================ 8 · paper portfolio
 def page_paper():
     st.title("🧾 Paper Portfolio")
@@ -644,11 +986,57 @@ def page_paper():
     if bk.empty:
         st.info("No baskets frozen yet — they're created automatically by the data refresh.")
         return
+    if "basket_type" not in bk.columns:
+        bk["basket_type"], bk["label"] = "live", bk["as_of"]
     latest_close = db.sort_values("date").groupby("ticker")["c"].last()
     latest_date = db["date"].max()
-    target_days = {"1d": 1, "2w": 10, "1m": 21, "6m": 126, "12m": 252}
+    px = db.pivot_table(index="date", columns="ticker", values="c").sort_index()
+    dates_idx = list(px.index)
+    target_days = {"1d": 1, "2w": 10, "1m": 21, "6m": 126, "12m": 252, "proxy": 5}
     hname = {"1d": "Tomorrow", "2w": "2 weeks", "1m": "1 month",
-             "6m": "6 months", "12m": "12 months"}
+             "6m": "6 months", "12m": "12 months", "proxy": "1 week (history)"}
+
+    # ---- the year-long historical record (proxy baskets, 1-week horizon) ----
+    hist = []
+    for (as_of, h), g in bk[bk.basket_type == "proxy"].groupby(["as_of", "horizon"]):
+        if as_of not in px.index:
+            continue
+        i = dates_idx.index(as_of)
+        j = min(i + 5, len(dates_idx) - 1)
+        if j == i:
+            continue
+        exit_d = dates_idx[j]
+        rets = px.loc[exit_d].reindex(g.ticker).values / g.entry_price.values - 1
+        spy = px.loc[exit_d, "SPY"] / g.spy_entry.iloc[0] - 1
+        hist.append({"as_of": as_of, "label": g.label.iloc[0],
+                     "excess": float(pd.Series(rets).mean() - spy),
+                     "settled": exit_d < latest_date})
+    if hist:
+        hd = pd.DataFrame(hist).sort_values("as_of")
+        settled = hd[hd.settled]
+        if len(settled) > 10:
+            mean_ex = settled["excess"].mean()
+            t_stat = mean_ex / (settled["excess"].std() / np.sqrt(len(settled)))
+            hit = (settled["excess"] > 0).mean()
+            st.subheader("One year of history — does the picking rule work?")
+            analyst([
+                f"{len(settled)} historical baskets (every Tuesday and Friday for a "
+                f"year, price-signals only): {hit:.0%} beat the S&P the following "
+                f"week; average edge {mean_ex:+.2%}/week (t-statistic {t_stat:.1f}).",
+                ("That t-statistic clears 2 — the edge is statistically real, though "
+                 "costs would eat part of it." if abs(t_stat) > 2 else
+                 "That t-statistic is below 2 — the historical edge is NOT "
+                 "statistically distinguishable from luck. Respect that."),
+                "These historical baskets use only price-derived signals (momentum, "
+                "volatility) because sentiment and options data can't be reconstructed "
+                "backwards — the live baskets going forward use the full score."])
+            fig = go.Figure(go.Scatter(x=pd.to_datetime(settled["as_of"]),
+                                       y=settled["excess"].cumsum(),
+                                       mode="lines", line=dict(width=2, color=SERIES[0])))
+            fig.add_hline(y=0, line_dash="dot", line_color=MUTED)
+            fig.update_layout(title="Cumulative weekly edge vs S&P (sum of excess returns)",
+                              yaxis_tickformat=".0%")
+            st.plotly_chart(style_fig(fig, 340), width="stretch")
 
     summary = []
     for (as_of, h), g in bk.groupby(["as_of", "horizon"]):
@@ -656,11 +1044,12 @@ def page_paper():
         basket = float(pd.Series(rets).mean())
         spy = float(latest_close["SPY"] / g.spy_entry.iloc[0] - 1)
         elapsed = max((pd.Timestamp(latest_date) - pd.Timestamp(as_of)).days, 0)
-        summary.append({"as_of": as_of, "horizon": h, "days": elapsed,
-                        "target_days": target_days[h] * 7 // 5,
+        summary.append({"as_of": as_of, "label": g.label.iloc[0], "horizon": h,
+                        "type": g.basket_type.iloc[0], "days": elapsed,
                         "basket_ret": basket, "spy_ret": spy,
                         "excess": basket - spy})
-    sm = pd.DataFrame(summary).sort_values(["as_of", "horizon"])
+    sm = (pd.DataFrame(summary).sort_values(["as_of", "horizon"], ascending=[False, True])
+            .head(40))
     sm["horizon"] = sm["horizon"].map(hname)
     st.subheader("The record so far")
     st.dataframe(sm.style.format({"basket_ret": "{:+.2%}", "spy_ret": "{:+.2%}",
@@ -834,6 +1223,8 @@ pages = st.navigation([
     st.Page(page_models, title="Models Lab", icon="🧪"),
     st.Page(page_sentiment, title="Sentiment & Events", icon="📰"),
     st.Page(page_scoreboard, title="Scoreboard", icon="🏆"),
+    st.Page(page_screens, title="Screens", icon="🔍"),
+    st.Page(page_p25, title="Portfolio 25", icon="🎛️"),
     st.Page(page_paper, title="Paper Portfolio", icon="🧾"),
     st.Page(page_institutions, title="Institutions & Insiders", icon="🏛️"),
     st.Page(page_lipstick, title="Lipstick Index", icon="💄"),

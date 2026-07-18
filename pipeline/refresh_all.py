@@ -11,7 +11,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 
 for script in ("parse_raw.py", "compute.py", "options_analytics.py",
-               "options_blocks.py", "scoreboard.py", "paper_portfolio.py"):
+               "options_blocks.py", "scoreboard.py", "quant_signals.py",
+               "portfolio25.py", "paper_portfolio.py", "paper_history.py"):
     print(f"=== {script} ===", flush=True)
     r = subprocess.run([sys.executable, str(HERE / script)])
     if r.returncode:

@@ -240,11 +240,17 @@ def hawkes_fit(times: np.ndarray, T: float):
     return best.x if best is not None else None
 
 
+HORIZON_DAYS = {"1m": 21, "2m": 42, "3m": 63, "4m": 84, "5m": 105, "6m": 126}
+
+
 def hawkes_simulate(mu, a, b, horizon=126, n_paths=400, seed=7):
     """Ogata thinning; exp kernel decays, so intensity just after the current
-    point is a valid upper bound until the next event."""
+    point is a valid upper bound until the next event. Returns expected event
+    count at `horizon` plus P(cluster) for every sub-horizon in HORIZON_DAYS
+    (cluster = 3 events within 10 trading days), all from the same paths."""
     rng = np.random.default_rng(seed)
-    counts, clustered = [], 0
+    counts = []
+    clustered = {k: 0 for k in HORIZON_DAYS}
     for _ in range(n_paths):
         t, S, events = 0.0, 0.0, []   # S = sum of exp(-b*(t - t_i)) at time t
         while True:
@@ -259,9 +265,12 @@ def hawkes_simulate(mu, a, b, horizon=126, n_paths=400, seed=7):
                 S += 1.0
         counts.append(len(events))
         ev = np.array(events)
-        if len(ev) >= 3 and np.any(ev[2:] - ev[:-2] <= 10):  # 3 events within 10 days
-            clustered += 1
-    return float(np.mean(counts)), clustered / n_paths
+        for k, hdays in HORIZON_DAYS.items():
+            sub = ev[ev <= hdays]
+            if len(sub) >= 3 and np.any(sub[2:] - sub[:-2] <= 10):
+                clustered[k] += 1
+    return (float(np.mean(counts)),
+            {k: v / n_paths for k, v in clustered.items()})
 
 
 def hawkes_industry(dj: pd.DataFrame, uni: pd.DataFrame) -> pd.DataFrame:
@@ -284,11 +293,11 @@ def hawkes_industry(dj: pd.DataFrame, uni: pd.DataFrame) -> pd.DataFrame:
         if fit is None:
             continue
         mu, a, b = fit
-        exp_events, p_cluster = hawkes_simulate(mu, a, b)
-        rows.append({"industry": ind, "mu": mu, "alpha_branching": a, "beta_decay": b,
-                     "n_events_2y": len(times),
-                     "expected_events_6m": exp_events,
-                     "p_cluster_6m": p_cluster})
+        exp_events, p_by_h = hawkes_simulate(mu, a, b)
+        row = {"industry": ind, "mu": mu, "alpha_branching": a, "beta_decay": b,
+               "n_events_2y": len(times), "expected_events_6m": exp_events}
+        row.update({f"p_cluster_{k}": v for k, v in p_by_h.items()})
+        rows.append(row)
     return pd.DataFrame(rows)
 
 
@@ -347,6 +356,16 @@ def main():
     hk = hawkes_industry(dj, uni)
     hk.to_parquet(STORE / "hawkes_industry.parquet", index=False)
     print(f"hawkes_industry: {len(hk):,} industries")
+
+    # append-only history so the dashboard can show how cluster risk moves
+    as_of = str(mb["date"].max())
+    hist_f = STORE / "hawkes_history.parquet"
+    hist = pd.read_parquet(hist_f) if hist_f.exists() else pd.DataFrame()
+    if hist.empty or as_of not in set(hist.get("as_of", [])):
+        snap = hk.copy()
+        snap["as_of"] = as_of
+        pd.concat([hist, snap], ignore_index=True).to_parquet(hist_f, index=False)
+        print(f"hawkes_history: snapshot appended for {as_of}")
 
     bt = backtest_deciles(db)
     bt.to_parquet(STORE / "backtest_deciles.parquet", index=False)
